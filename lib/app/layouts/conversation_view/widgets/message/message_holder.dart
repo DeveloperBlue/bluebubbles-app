@@ -78,6 +78,7 @@ class _MessageHolderState extends CustomState<MessageHolder, void, MessageWidget
   List<MessagePart> messageParts = [];
   List<RxDouble> replyOffsets = [];
   List<GlobalKey> keys = [];
+  int numberPartsForGrouping = 0; // One item is displayed as a single, two or three is a collage, and four or more is a stack
   bool gaveHapticFeedback = false;
   final RxBool tapped = false.obs;
 
@@ -98,6 +99,13 @@ class _MessageHolderState extends CustomState<MessageHolder, void, MessageWidget
       messageParts = controller.parts;
       replyOffsets = List.generate(messageParts.length, (_) => 0.0.obs);
       keys = List.generate(messageParts.length, (_) => GlobalKey());
+      numberPartsForGrouping = messageParts.fold(0, (t, e) {
+        if (e.attachments.isEmpty) return t;
+        if (e.attachments.first.mimeStart == 'image' || e.attachments.first.mimeStart == 'video' || e.attachments.first.mimeType == "audio/mp4") {
+          return t + 1;
+        }
+        return t;
+      });
     }
 
     eventDispatcher.stream.listen((event) {
@@ -217,6 +225,28 @@ class _MessageHolderState extends CustomState<MessageHolder, void, MessageWidget
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: message.isFromMe! ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                   children: [
+                    Text(
+                      'Message ${message.guid} ${numberPartsForGrouping}',
+                      style: TextStyle(backgroundColor: Colors.red)
+                    ),
+                    if (numberPartsForGrouping >= 4)
+                      RichText(
+                        text : TextSpan(
+                          children: [
+                            WidgetSpan(
+                              child: Icon(
+                                ss.settings.skin.value == Skins.iOS ? CupertinoIcons.rectangle_grid_2x2_fill : Icons.people,
+                                size: 14,
+                                color: context.theme.colorScheme.primary,
+                              )
+                            ),
+                            TextSpan(
+                              text: ' $numberPartsForGrouping Photos',
+                              style: TextStyle(color : context.theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w600)
+                            )  
+                          ]
+                        )
+                      ),
                     // message column
                     ...messageParts.mapIndexed((index, e) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2.0),
