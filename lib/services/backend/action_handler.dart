@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:bluebubbles/helpers/ui/facetime_helpers.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -250,6 +251,129 @@ class ActionHandler extends GetxService {
 
     return completer.future;
   }
+
+  Future<void> prepAttachmentsForMultipart(Chat c, Message m) async {
+    print("Prepping Attachments for Multipart Message");
+    for (var attachment in m.attachments) {
+      final progress = Tuple2(attachment!.guid!, 0.0.obs);
+      attachmentProgress.add(progress);
+      // Save the attachment to storage and DB
+      if (!kIsWeb) {
+        String pathName = "${fs.appDocDir.path}/attachments/${attachment.guid}/${attachment.transferName}";
+        final file = await File(pathName).create(recursive: true);
+        if (attachment.mimeType == "image/gif") {
+          attachment.bytes = await fixSpeedyGifs(attachment.bytes!);
+        }
+        await file.writeAsBytes(attachment.bytes!);
+      }
+    }
+    await c.addMessage(m);
+  }
+
+  Future<void> sendAttachmentsAsMultipart(Chat c, Message m,  List<PlatformFile> platformAttachments) async {
+
+    print("Sending Attachments as Multipart Message from Queue");
+    Logger.debug("Sending Attachments as Multipart Message from Queue - Logger");
+
+    final completer = Completer<void>();
+    latestCancelToken = CancelToken();
+
+    print("Attributes Body");
+    print(m.attributedBody);
+
+    print("Uploading Attachments");
+    Logger.debug("Uploading Attachments");
+
+    final attachmentResponses = await Future.wait(
+      m.attachments.map((attachment) async {
+        if (attachment == null) return null;
+
+        final progress = attachmentProgress.firstWhere((e) => e.item1 == attachment.guid);
+
+        try {
+
+          final file = PlatformFile(path : "${fs.appDocDir.path}/attachments/${attachment.guid}/${attachment.transferName}", name : attachment.transferName!, bytes: attachment.bytes, size : attachment.bytes!.length);
+          final response = await http.uploadAttachment(
+            file,
+            onSendProgress: (count, total) => progress.item2.value = count / attachment.bytes!.length,
+            cancelToken: latestCancelToken,
+            attachment : file
+          );
+
+          return {
+            "attachment": response.data['data']['path'],
+            "name": attachment.transferName,
+            "partIndex": m.attachments.indexOf(attachment),
+          };
+        } catch (error) {
+          Logger.error("Failed to upload attachment: ${attachment.transferName}", error: error);
+          return null;
+        }
+      }),
+    );
+
+        // Filter out any failed uploads (null values)
+    final parts = attachmentResponses.whereType<Map<String, dynamic>>().toList();
+
+    print("Parts");
+    print(parts);
+    Logger.debug("Parts ${parts.length}");
+
+    print("Sending HTTP Multipart");
+    Logger.debug("Sending HTTP Multipart");
+
+    http.sendMultipart(
+      c.guid,
+      m.guid!,
+      parts,
+      subject: m.subject,
+      selectedMessageGuid: m.threadOriginatorGuid,
+      effectId: m.expressiveSendStyleId,
+      partIndex: int.tryParse(m.threadOriginatorPart?.split(":").firstOrNull ?? ""),
+      ddScan: !ss.isMinSonomaSync && parts.any((e) => e["text"].toString().hasUrl)
+    ).then((response) async {
+      final newMessage = Message.fromMap(response.data['data']);
+
+      try {
+        await matchMessageWithExisting(c, m.guid!, newMessage, existing: m);
+      } catch (ex) {
+        Logger.warn("Failed to find message match for ${m.guid} -> ${newMessage.guid}!", error: ex, tag: "MessageStatus");
+      }
+
+      for (var attachment in m.attachments) {
+        for (Attachment? a in newMessage.attachments) {
+          if (a == null) continue;
+
+          matchAttachmentWithExisting(c, m.guid!, a, existing: attachment)
+            .then((_) {
+              ms(c.guid).updateMessage(newMessage);
+            })
+            .catchError((e, stack) {
+              Logger.warn("Failed to replace attachment ${a.guid}!", error: e, tag: "AttachmentStatus");
+            }
+          );
+        }
+      }
+
+      attachmentProgress.removeWhere((e) => e.item1 == m.guid || e.item2 >= 1);
+      completer.complete();
+    }).catchError((error, stack) async {
+      Logger.error('Failed to send message!', error: error, trace: stack);
+
+      final tempGuid = m.guid;
+      m = handleSendError(error, m);
+
+      if (!ls.isAlive || !(cm.getChatController(c.guid)?.isAlive ?? false)) {
+        await notif.createFailedToSend(c);
+      }
+      await Message.replaceMessage(tempGuid, m);
+      attachmentProgress.removeWhere((e) => e.item1 == m.guid || e.item2 >= 1);
+      completer.completeError(error);
+    });
+
+    return completer.future;
+  }
+
   
   Future<void> prepAttachment(Chat c, Message m) async {
     final attachment = m.attachments.first!;

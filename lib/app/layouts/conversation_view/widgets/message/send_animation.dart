@@ -66,31 +66,61 @@ class _SendAnimationState
         controller.preparePlayer(path: ss.settings.sendSoundPath.value!, volume: ss.settings.soundVolume.value / 100).then((_) => controller.startPlayer());
       }
     }
-    for (int i = 0; i < attachments.length; i++) {
-      final file = attachments[i];
+    if (attachments.length > 1) {
+      print("Sending Attachments as Multipart Message");
       final message = Message(
         text: "",
         dateCreated: DateTime.now(),
         hasAttachments: true,
-        attachments: [
-          Attachment(
-            isOutgoing: true,
-            mimeType: mime(file.path),
-            uti: "public.jpg",
-            bytes: file.bytes,
-            transferName: file.name,
-            totalBytes: file.size,
-          ),
-        ],
+        attachments: attachments.map((attachment) => Attachment(
+          isOutgoing: true,
+          mimeType : mime(attachment.path),
+          uti : 'public.jpg',
+          bytes: attachment.bytes,
+          transferName : attachment.name,
+          totalBytes : attachment.size
+        )).toList(),
         isFromMe: true,
         handleId: 0,
-        threadOriginatorGuid: i == 0 ? replyGuid : null,
-        threadOriginatorPart: i == 0 ? "${part ?? 0}:0:0" : null,
+        threadOriginatorGuid: null,
+        threadOriginatorPart: null,
         expressiveSendStyleId: effectId,
       );
       message.generateTempGuid();
-      message.attachments.first!.guid = message.guid;
-      await outq.queue(OutgoingItem(type: QueueType.sendAttachment, chat: controller.chat, message: message, customArgs: {"audio": isAudioMessage}));
+      for (int i = 0; i < message.attachments.length; i++ ){
+        message.attachments[i]!.guid = "${message.guid}-$i";
+      }
+      // for (var attachment in message.attachments) {
+      //   attachment!.guid = message.guid;
+      // }
+      await outq.queue(OutgoingItem(type: QueueType.sendAttachmentsAsMultipart, chat: controller.chat, message: message, customArgs: {"audio": isAudioMessage, "platformAttachments" : attachments}));
+    } else {
+      for (int i = 0; i < attachments.length; i++) {
+        final file = attachments[i];
+        final message = Message(
+          text: "",
+          dateCreated: DateTime.now(),
+          hasAttachments: true,
+          attachments: [
+            Attachment(
+              isOutgoing: true,
+              mimeType: mime(file.path),
+              uti: "public.jpg",
+              bytes: file.bytes,
+              transferName: file.name,
+              totalBytes: file.size,
+            ),
+          ],
+          isFromMe: true,
+          handleId: 0,
+          threadOriginatorGuid: i == 0 ? replyGuid : null,
+          threadOriginatorPart: i == 0 ? "${part ?? 0}:0:0" : null,
+          expressiveSendStyleId: effectId,
+        );
+        message.generateTempGuid();
+        message.attachments.first!.guid = message.guid;
+        await outq.queue(OutgoingItem(type: QueueType.sendAttachment, chat: controller.chat, message: message, customArgs: {"audio": isAudioMessage}));
+      }
     }
 
     if (text.isNotEmpty || subject.isNotEmpty) {

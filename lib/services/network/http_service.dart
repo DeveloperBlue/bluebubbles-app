@@ -645,6 +645,27 @@ class HttpService extends GetxService {
       );
       return returnSuccessOrError(response);
     });
+  } 
+
+  /// Upload an attachment as a prequisite for sendMultipart. [file] is the
+  /// PlatformFile file to be uploaded.
+  Future<Response> uploadAttachment(PlatformFile file, {void Function(int, int)? onSendProgress, CancelToken? cancelToken, required PlatformFile attachment}) async {
+    return runApiGuarded(() async {
+      final fileName = file.name;
+      final formData = FormData.fromMap({
+        "attachment": kIsWeb ? MultipartFile.fromBytes(file.bytes!, filename: fileName) : await MultipartFile.fromFile(file.path!, filename: fileName),
+      });
+
+      final response = await dio.post(
+          "$apiRoot/attachment/upload",
+          queryParameters: buildQueryParams(),
+          cancelToken: cancelToken,
+          data: formData,
+          onSendProgress: onSendProgress,
+          options: Options(sendTimeout: dio.options.sendTimeout! * 12, receiveTimeout: dio.options.receiveTimeout! * 12, headers: headers, responseType: ResponseType.json),
+      );
+      return returnSuccessOrError(response);
+    });
   }
 
   /// Send an attachment. [chatGuid] specifies the chat, [tempGuid] specifies a

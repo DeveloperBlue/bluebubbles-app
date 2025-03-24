@@ -11,6 +11,7 @@ abstract class Queue extends GetxService {
   List<QueueItem> items = [];
 
   Future<void> queue(QueueItem item) async {
+    print("Enqueing Item");
     final returned = await prepItem(item);
     // we may get a link split into 2 messages
     if (item is OutgoingItem && returned is List) {
@@ -35,6 +36,8 @@ abstract class Queue extends GetxService {
       isProcessing = false;
       return;
     }
+
+    print("Processing Queue Item");
 
     isProcessing = true;
     QueueItem queued = items.removeAt(0);
