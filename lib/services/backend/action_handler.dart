@@ -85,6 +85,7 @@ class ActionHandler extends GetxService {
     // First, try to find a matching message with the replacement's GUID.
     // We check this first because if an event came in for that GUID, we should be able to ignore
     // the API response.
+    print("Searching for existing message GUID $existingGuid");
     final existingReplacementMessage = Message.findOne(guid: replacement.guid);
     if (existingReplacementMessage != null) {
       Logger.debug("Found existing message with GUID ${replacement.guid}...", tag: "MessageStatus");
@@ -122,6 +123,7 @@ class ActionHandler extends GetxService {
     // First, try to find a matching message with the replacement's GUID.
     // We check this first because if an event came in for that GUID, we should be able to ignore
     // the API response.
+    print("Searching for existing attachment GUID $existingGuid");
     final existingReplacementMessage = Attachment.findOne(replacement.guid!);
     if (existingReplacementMessage != null) {
       Logger.debug("Replacing existing attachment with GUID ${replacement.guid}...", tag: "AttachmentStatus");
@@ -267,13 +269,13 @@ class ActionHandler extends GetxService {
         await file.writeAsBytes(attachment.bytes!);
       }
     }
+    Logger.debug("Adding multipart message with guid ${m.guid}");
     await c.addMessage(m);
   }
 
   Future<void> sendAttachmentsAsMultipart(Chat c, Message m,  List<PlatformFile> platformAttachments) async {
 
     print("Sending Attachments as Multipart Message from Queue");
-    Logger.debug("Sending Attachments as Multipart Message from Queue - Logger");
 
     final completer = Completer<void>();
     latestCancelToken = CancelToken();
@@ -282,7 +284,6 @@ class ActionHandler extends GetxService {
     print(m.attributedBody);
 
     print("Uploading Attachments");
-    Logger.debug("Uploading Attachments");
 
     final attachmentResponses = await Future.wait(
       m.attachments.map((attachment) async {
@@ -317,10 +318,9 @@ class ActionHandler extends GetxService {
 
     print("Parts");
     print(parts);
-    Logger.debug("Parts ${parts.length}");
+    print("Parts ${parts.length}");
 
     print("Sending HTTP Multipart");
-    Logger.debug("Sending HTTP Multipart");
 
     http.sendMultipart(
       c.guid,
@@ -332,28 +332,40 @@ class ActionHandler extends GetxService {
       partIndex: int.tryParse(m.threadOriginatorPart?.split(":").firstOrNull ?? ""),
       ddScan: !ss.isMinSonomaSync && parts.any((e) => e["text"].toString().hasUrl)
     ).then((response) async {
+
       final newMessage = Message.fromMap(response.data['data']);
+
+
+      for (final e in response.data['data'].entries) {
+        print("${e.key} = ${e.value}");
+      }
+
+      print("Existing Temp GUID ${m.guid}");
+      print("NewMessage attachments ${newMessage.attachments.length}");
+
+      // for (Attachment? a in newMessage.attachments) {
+      //   if (a == null) continue;
+
+      //   for (var attachment in m.attachments) {
+
+      //     matchAttachmentWithExisting(c, m.guid!, a, existing: attachment)
+      //       .then((_) {
+      //         ms(c.guid).updateMessage(newMessage);
+      //       })
+      //       .catchError((e, stack) {
+      //         Logger.warn("Failed to replace attachment ${a.guid}!", error: e, tag: "AttachmentStatus");
+      //       }
+      //     );
+
+      //   }
+      // }
 
       try {
         await matchMessageWithExisting(c, m.guid!, newMessage, existing: m);
-      } catch (ex) {
-        Logger.warn("Failed to find message match for ${m.guid} -> ${newMessage.guid}!", error: ex, tag: "MessageStatus");
+      } catch (e) {
+        Logger.warn("Failed to find message match for ${m.guid} -> ${newMessage.guid}!", error: e, tag: "MessageStatus");
       }
 
-      for (var attachment in m.attachments) {
-        for (Attachment? a in newMessage.attachments) {
-          if (a == null) continue;
-
-          matchAttachmentWithExisting(c, m.guid!, a, existing: attachment)
-            .then((_) {
-              ms(c.guid).updateMessage(newMessage);
-            })
-            .catchError((e, stack) {
-              Logger.warn("Failed to replace attachment ${a.guid}!", error: e, tag: "AttachmentStatus");
-            }
-          );
-        }
-      }
 
       attachmentProgress.removeWhere((e) => e.item1 == m.guid || e.item2 >= 1);
       completer.complete();
@@ -397,6 +409,7 @@ class ActionHandler extends GetxService {
     final progress = attachmentProgress.firstWhere((e) => e.item1 == attachment.guid);
     final completer = Completer<void>();
     latestCancelToken = CancelToken();
+    print("Sending attachment with guids message: [${m.guid!}] attachment: [${attachment.guid!}]");
     http.sendAttachment(
       c.guid,
       attachment.guid!,
@@ -417,9 +430,13 @@ class ActionHandler extends GetxService {
       latestCancelToken = null;
       final newMessage = Message.fromMap(response.data['data']);
 
+      print("Existing Temp GUID ${m.guid}");
+      print("NewMessage attachments ${newMessage.attachments.length}");
+
       for (Attachment? a in newMessage.attachments) {
         if (a == null) continue;
 
+        print("MatchAttachmentWithExisting [${m.guid}], [${a.guid}], [${attachment.guid}]");
         matchAttachmentWithExisting(c, m.guid!, a, existing: attachment)
           .then((_) {
             ms(c.guid).updateMessage(newMessage);

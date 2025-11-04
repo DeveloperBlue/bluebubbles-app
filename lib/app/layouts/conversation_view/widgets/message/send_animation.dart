@@ -87,9 +87,11 @@ class _SendAnimationState
         expressiveSendStyleId: effectId,
       );
       message.generateTempGuid();
+      print("Generated multipart message with temp GUID ${message.guid}");
       for (int i = 0; i < message.attachments.length; i++ ){
         message.attachments[i]!.guid = "${message.guid}-$i";
       }
+      message.attachments.first!.guid = message.guid;
       // for (var attachment in message.attachments) {
       //   attachment!.guid = message.guid;
       // }
