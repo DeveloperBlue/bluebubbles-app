@@ -54,3 +54,6 @@ pubspeck.lock
 /lib/models/html/giphy.dart
 
 /android/app/.cxx/
+
+# FVM Version Cache
+.fvm/

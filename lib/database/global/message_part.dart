@@ -4,7 +4,9 @@ import 'package:bluebubbles/services/services.dart';
 import 'package:collection/collection.dart';
 import 'package:faker/faker.dart';
 
-class MessagePart {
+abstract class MessageElement {}
+
+class MessagePart extends MessageElement {
   MessagePart({
     this.subject,
     this.text,
