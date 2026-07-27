@@ -287,12 +287,16 @@ class _AttachmentPickerState extends State<AttachmentPicker> with ThemeHelpers {
         showSnackbar("Error", "This file is over 1 GB! Please compress it before sending.");
         continue;
       }
-      controller.pickedAttachments.add(PlatformFile(
+      // Android's file_picker cache under cache/file_picker/ is ephemeral —
+      // copy into app docs immediately so prep can still find the file after
+      // the picker dismisses / the OS reclaims cache.
+      final persisted = await FilesystemSvc.persistPickedAttachment(PlatformFile(
         path: file.path,
         name: file.name,
         bytes: null,
         size: file.size,
       ));
+      controller.pickedAttachments.add(persisted);
     }
   }
 

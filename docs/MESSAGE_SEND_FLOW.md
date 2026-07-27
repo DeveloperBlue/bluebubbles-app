@@ -15,10 +15,13 @@ UI (send button tap)
   → OutgoingMsgHandler.queue(item)
       → _ensureTempGuid(item) — belt-and-suspenders GUID assignment
       → _prepItemWithRetry(item):
-          text/multipart → _buildOutgoingMessages() (may split into 2 msgs on
-              old macOS) → _persistOutgoingMessages() → chat.addMessage()
-              (saved to DB with tempGuid — appears in UI as "sending")
+          text/multipart (no attachments) → _buildOutgoingMessages() (may split
+              into 2 msgs on old macOS) → _persistOutgoingMessages() →
+              chat.addMessage() (saved to DB with tempGuid — appears in UI as
+              "sending")
           attachment     → prepAttachment() (copy file, save to DB)
+          multipart with attachments → prepMultipartAttachments() (stage every
+              file, save ONE message with all attachments linked)
           retried up to 3x on transient failure; a terminal failure is
               surfaced as a failed message, never silently dropped
       → item enters the serial `_queue`; OutgoingMessageHandler._processNext()
@@ -55,9 +58,13 @@ The Send button calls the `sendMessage` callback passed down from `ConversationT
 
 ### Step 2 — Build Message Objects (`send_animation.dart`)
 
-`SendAnimation.send()` constructs one `Message` per attachment and one for the text/subject body (if non-empty), then wraps each in a typed outgoing queue item and pushes it to `OutgoingMsgHandler.queue()`.
+`SendAnimation.send()` first decides between two attachment shapes:
 
-**Attachments explicitly generate their tempGuid here** (and copy it onto the attachment record so message and attachment share a GUID):
+**Multipart path (one message for everything).** When there are 2+ attachments — or 1+ attachment mixed with text/subject/mentions — and `OutgoingMsgHandler.canSendMultipartAttachments` is true (Private API enabled + attachment-send toggle + server ≥ v1.7.0, `ServerDetails.supportsMultipartAttachmentUpload`), `_sendMultipartAttachments()` builds **one** `Message` carrying every attachment. Each attachment gets its **own** temp GUID (distinct from the message's), and the `attributedBody` mirrors the server's echo shape: one U+FFFC placeholder char per attachment at the start of the string, one run per attachment (`messagePart` 0..n-1, `attachmentGuid` = temp att GUID), then the text/mention runs as the final part. Reply/effect/subject are applied once, and the whole thing is queued as a single `OutgoingMultipartMessage(attachments: …)`. Audio messages and interactive (balloon) sends never take this path.
+
+**Legacy path (one message per file).** Otherwise, `send()` constructs one `Message` per attachment and one for the text/subject body (if non-empty), then wraps each in a typed outgoing queue item and pushes it to `OutgoingMsgHandler.queue()`. Single-file entry points outside the composer (`share.dart`, `intents_service.dart`) always use this path.
+
+**Legacy attachments explicitly generate their tempGuid here** (and copy it onto the attachment record so message and attachment share a GUID):
 ```dart
 message.generateTempGuid();  // sets guid = "temp-XXXXXXXX" (8 random chars)
 attachment.guid = message.guid;
@@ -86,15 +93,17 @@ Queue item types are explicit and compile-time safe: `OutgoingMessage` (plain te
 
 **`OutgoingMessageHandler.queue(item)`** runs entirely synchronously with respect to the caller before the item is placed on the serial send queue:
 
-1. **`_ensureTempGuid(item)`** — assigns `item.message.generateTempGuid()` if the message has no GUID yet (a no-op for attachments, which already have one from Step 2, and for retries, which reuse the original failed message's GUID).
-2. **`_prepItemWithRetry(item)`** — for text/multipart/reaction items, builds the message(s) once via `_buildOutgoingMessages()` (pure/synchronous — never re-run across retries, since re-running would desync the GUID from what a prior attempt already persisted), then calls `_persistOutgoingMessages()`; for attachments, calls `prepAttachment()`. Both are retried up to 3 attempts (250ms × attempt backoff) if a transient failure leaves the record unsaved. If retries are exhausted, the item is **finalized as a failed message** (visible + retryable) rather than silently dropped — this matters because a fire-and-forget `queue()` call would otherwise lose the message entirely if the isolate was mid-restart.
+1. **`_ensureTempGuid(item)`** — assigns `item.message.generateTempGuid()` if the message has no GUID yet (a no-op for attachments, which already have one from Step 2, and for retries, which reuse the original failed message's GUID). For `OutgoingMultipartMessage` items it also backfills any missing per-attachment temp GUIDs.
+2. **`_prepItemWithRetry(item)`** — for text/mention-multipart/reaction items, builds the message(s) once via `_buildOutgoingMessages()` (pure/synchronous — never re-run across retries, since re-running would desync the GUID from what a prior attempt already persisted), then calls `_persistOutgoingMessages()`; for attachments, calls `prepAttachment()`; for multipart items carrying attachments, calls `prepMultipartAttachments()`. All are retried up to 3 attempts (250ms × attempt backoff) if a transient failure leaves the record unsaved. If retries are exhausted, the item is **finalized as a failed message** (visible + retryable) rather than silently dropped — this matters because a fire-and-forget `queue()` call would otherwise lose the message entirely if the isolate was mid-restart.
 3. Once prep succeeds, the resulting message(s) are wrapped back into queue entries and pushed onto the internal `Queue<_OutgoingEntry>`. `pendingChatGuids` (an `RxSet<String>`, used by UI to show/hide a "Cancel Outgoing Messages" control) gets the chat GUID added, then `_processNext()` is kicked off.
 
 **`_buildOutgoingMessages()`** — on macOS versions older than Big Sur, a long text message containing a URL is split into two separate `Message`s (each with its own tempGuid) to prevent server-side matching glitches. This is the only case that produces more than one message per send.
 
 **`_persistOutgoingMessages()`** saves each message to ObjectBox **with its tempGuid** via `chat.addMessage(message, clearNotificationsIfFromMe: ...)` — skipping the DB write if a retry finds the GUID already saved. This is intentional — the message appears in the UI immediately in a "sending" state before the server has confirmed anything. It also pushes the message into `MessagesSvc.addNewMessage()` (or, for a reaction, directly into the parent's `associatedMessages` via `addAssociatedMessageInternal`) and calls `ChatsSvc.updateChatLatestMessage()` so the chat tile subtitle updates immediately.
 
-`prepAttachment()` copies the file from its source path (or writes staged bytes) to the app's attachment directory, optimizes GIFs, loads image metadata, stages interactive-message media if applicable, then saves the message to the DB and pushes it into `MessagesSvc` the same way.
+`prepAttachment()` copies the file from its source path (or writes staged bytes) to the app's attachment directory, optimizes GIFs, loads image metadata, stages interactive-message media if applicable (all via the shared `_stageAttachmentFile()` helper), then saves the message to the DB and pushes it into `MessagesSvc` the same way.
+
+`prepMultipartAttachments()` is the multipart counterpart: it stages **every** attachment via `_stageAttachmentFile()`, registers one `AttachmentUploadProgress` entry per attachment (keyed by the attachment's own temp GUID), saves ONE message with all attachments linked via `chat.addMessage(m, attachments: all)`, and calls `notifyAttachmentUploadStarted()` per attachment.
 
 **Key file:** `lib/services/backend/outgoing_message_handler.dart`
 
@@ -133,9 +142,11 @@ OutgoingMessageHandler.sendMessage()/sendMultipart()/sendAttachment()
 
 This keeps the actual `dio` call — and, for attachments, the file read and `FormData` construction — inside the isolate so an in-flight send survives the app being backgrounded.
 
-Before firing, `sendMessage()`/`sendAttachment()` call `_resolveMethod()` to decide `"private-api"` vs `"apple-script"`: private API is used if the user has it globally enabled *and* the per-type setting is on, or if the message uses a feature only pAPI supports (subject, thread reply, or an expressive send-style effect) — subject/thread/effect force pAPI regardless of the toggle.
+**Multipart sends with attachments** do the server's two-step flow entirely inside the isolate: `SendMessageActions.sendMultipartMessage()` uploads each staged file via `HttpSvc.attachment.upload()` (`POST /attachment/upload`), takes the returned upload id (`data.path` on server ≥ ~1.9.8, `data.hash` on older), substitutes it into the matching part's `attachment` field (parts are handed in with an `attachmentTempGuid` marker), then fires `POST /message/multipart` with parts shaped `{partIndex, attachment: <uploadId>, name}` for attachments and `{partIndex, text, mention}` for text — always one attachment per part.
 
-**Attachment upload progress** is reported from inside the isolate: `SendMessageActions.sendAttachmentMessage()`'s `onSendProgress` callback emits `IsolateEventEmitter.emit(IsolateEvent.attachmentUploadProgress, {chatGuid, messageGuid, progress})`. `OutgoingMessageHandler`'s constructor registers a listener for this event (`_handleAttachmentUploadProgressEvent`) that updates the observable `attachmentProgress` list and calls `MessagesSvc.notifyAttachmentUploadProgress()` so the attachment bubble's progress bar animates in real time.
+Before firing, `sendMessage()`/`sendAttachment()` call `_resolveMethod()` to decide `"private-api"` vs `"apple-script"`: private API is used if the user has it globally enabled *and* the per-type setting is on, or if the message uses a feature only pAPI supports (subject, thread reply, or an expressive send-style effect) — subject/thread/effect force pAPI regardless of the toggle. Multipart sends are inherently private-api.
+
+**Attachment upload progress** is reported from inside the isolate: the `onSendProgress` callbacks in `SendMessageActions.sendAttachmentMessage()` / `sendMultipartMessage()` emit `IsolateEventEmitter.emit(IsolateEvent.attachmentUploadProgress, {chatGuid, messageGuid, attachmentGuid, progress})` — `attachmentGuid` equals `messageGuid` for legacy single-attachment sends, and is the per-attachment temp GUID for multipart sends. `OutgoingMessageHandler`'s constructor registers a listener for this event (`_handleAttachmentUploadProgressEvent`) that updates the observable `attachmentProgress` list (keyed by attachment GUID) and calls `MessagesSvc.notifyAttachmentUploadProgress()` so the attachment bubble's progress bar animates in real time.
 
 **Key files:**
 - `lib/services/backend/interfaces/send_message_interface.dart`
@@ -176,7 +187,7 @@ completeSendProgressIfExists(tempGuid, Origin.outgoingMessageHandler);  // remov
 await onSuccess(data);   // caller's onSuccess parses Message.fromMap(data['data']) and calls _matchMessageWithExisting
 ```
 
-For `sendMessage()`/`sendMultipart()`, `onSuccess` is `_finalizeOutgoingSuccess()`, which parses the server message and calls `_matchMessageWithExisting()`. For `sendAttachment()`, the success handling is inline (not via `_finalizeOutgoingSuccess`) because attachment GUID swaps (`_matchAttachmentWithExisting()`, per response attachment) must complete *before* the message GUID swap.
+For `sendMessage()` and attachment-less `sendMultipart()`, `onSuccess` is `_finalizeOutgoingSuccess()`, which parses the server message and calls `_matchMessageWithExisting()`. For `sendAttachment()` — and `sendMultipart()` when it carries attachments — the success handling is inline (not via `_finalizeOutgoingSuccess`) because attachment GUID swaps (`_matchAttachmentWithExisting()`, per response attachment) must complete *before* the message GUID swap. On the multipart path each response attachment is matched to its temp counterpart **by index** (response attachments arrive in part order), falling back to `transferName` if the counts diverge — never to the shared message GUID.
 
 If the socket event has not yet arrived with the real GUID, the temp message is swapped for the real one here. If the socket event arrives afterward, `_processUpdatedMessage()` on the receive side finds the real GUID already in the DB and treats it as a parallel-delivery no-op/refresh rather than duplicating the swap.
 
@@ -244,11 +255,13 @@ If the HTTP call fails, `_sendWithRace()`'s `onError` branch fires, which every 
 | tempGuid generation | `lib/database/io/message.dart` | `generateTempGuid()` → `"temp-XXXXXXXX"` |
 | Queue + prep + send | `lib/services/backend/outgoing_message_handler.dart` | `queue()`, `_ensureTempGuid()`, `_prepItemWithRetry()`, `_processNext()`, `_dispatchItem()` |
 | Build/split messages | `lib/services/backend/outgoing_message_handler.dart` | `_buildOutgoingMessages()` |
-| Save to DB (temp) | `lib/services/backend/outgoing_message_handler.dart` | `_persistOutgoingMessages()` / `prepAttachment()` → `chat.addMessage()` |
+| Save to DB (temp) | `lib/services/backend/outgoing_message_handler.dart` | `_persistOutgoingMessages()` / `prepAttachment()` / `prepMultipartAttachments()` → `chat.addMessage()` |
 | HTTP dispatch | `lib/services/backend/outgoing_message_handler.dart` | `sendMessage()`, `sendMultipart()`, `sendAttachment()` |
 | HTTP interface (isolate routing) | `lib/services/backend/interfaces/send_message_interface.dart` | `sendTextMessage()`, `sendTapback()`, `sendMultipartMessage()`, `sendAttachmentMessage()` |
 | HTTP isolate actions | `lib/services/backend/actions/send_message_actions.dart` | same names, run inside isolate |
 | Raw HTTP request | `lib/services/network/api/message_api.dart` | `sendText()`, `sendTapback()`, `sendMultipart()`, `sendAttachment()` |
+| Attachment upload (multipart flow) | `lib/services/network/api/attachment_api.dart` | `upload()` → `POST /attachment/upload` |
+| Multipart capability gate | `lib/models/server_details.dart` + `outgoing_message_handler.dart` | `supportsMultipartAttachmentUpload` (≥ 247), `canSendMultipartAttachments` |
 | HTTP + socket race | `lib/services/backend/outgoing_message_handler.dart` | `_sendWithRace()`, `_handleSend()` |
 | Progress tracker | `lib/services/backend/outgoing_message_handler.dart` | `registerSendProgressTracker()`, `completeSendProgressIfExists()` |
 | Attachment upload progress | `lib/services/backend/outgoing_message_handler.dart` | `_handleAttachmentUploadProgressEvent()`, `attachmentProgress` |

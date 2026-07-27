@@ -587,15 +587,20 @@ class IncomingMessageHandler {
   ///
   /// ### Why this is needed
   ///
-  /// When an attachment is sent, the local attachment record is created with
-  /// the same temp GUID as its parent message (`temp-XXXXXXXX`).  The server
-  /// then assigns a real GUID.  This method resolves which local GUID to
-  /// replace by index, using the following priority:
+  /// When an attachment is sent, the local record is created with a temp
+  /// GUID — for legacy single-attachment sends this equals the parent
+  /// message's temp GUID; for multipart multi-attachment sends each
+  /// attachment carries its OWN temp GUID.  The server then assigns real
+  /// GUIDs.  This method resolves which local GUID to replace by index,
+  /// using the following priority:
   ///
-  /// * If [existingGuid] starts with `temp-`, it was the attachment GUID
-  ///   (they are set equal at send time in `send_animation.dart`).
-  /// * Otherwise look up the DB GUID via [existing.dbAttachments] by index —
-  ///   this handles socket events that omit `tempGuid` (e.g. keyboard GIFs).
+  /// * Look up the DB GUID via [existing.dbAttachments] by index — correct
+  ///   for both send flavors (a legacy send's single linked attachment holds
+  ///   the shared temp GUID; a multipart send's attachments are linked in
+  ///   part order, matching the server's attachment order), and also handles
+  ///   socket events that omit `tempGuid` (e.g. keyboard GIFs).
+  /// * Fall back to [existingGuid] when the message record has no linked
+  ///   attachment at this index (e.g. prep failed to link it).
   ///
   /// ### Parallel-delivery
   ///
@@ -615,9 +620,7 @@ class IncomingMessageHandler {
 
       // Resolve which local GUID currently owns this attachment slot.
       final String attachmentExistingGuid;
-      if (existingGuid.startsWith('temp-')) {
-        attachmentExistingGuid = existingGuid;
-      } else if (existing.dbAttachments.isNotEmpty && i < existing.dbAttachments.length) {
+      if (existing.dbAttachments.isNotEmpty && i < existing.dbAttachments.length) {
         attachmentExistingGuid = existing.dbAttachments[i].guid ?? existingGuid;
       } else {
         attachmentExistingGuid = existingGuid;

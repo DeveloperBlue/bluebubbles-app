@@ -59,12 +59,18 @@ class SendMessageInterface {
     return await GetIt.I<GlobalIsolate>().send<Map<String, dynamic>>(IsolateRequestType.sendTapback, input: data);
   }
 
-  /// Sends a multipart (mention / mixed-content) message and returns the decoded
-  /// server response body.
+  /// Sends a multipart (mention / mixed-content / attachment) message and
+  /// returns the decoded server response body.
+  ///
+  /// [attachments] entries (`{tempGuid, filePath, fileName, fileSize}`) are
+  /// uploaded inside the isolate via `POST /attachment/upload` before the
+  /// multipart request fires; each part referencing an attachment must carry
+  /// a matching `attachmentTempGuid` key.
   static Future<Map<String, dynamic>> sendMultipartMessage({
     required String chatGuid,
     required String tempGuid,
     required List<Map<String, dynamic>> parts,
+    List<Map<String, dynamic>>? attachments,
     String? effectId,
     String? subject,
     String? selectedMessageGuid,
@@ -75,6 +81,7 @@ class SendMessageInterface {
       'chatGuid': chatGuid,
       'tempGuid': tempGuid,
       'parts': parts,
+      'attachments': attachments ?? const [],
       'effectId': effectId,
       'subject': subject,
       'selectedMessageGuid': selectedMessageGuid,

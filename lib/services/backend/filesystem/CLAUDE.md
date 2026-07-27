@@ -14,6 +14,8 @@
 - `saveAttachment(Attachment, Uint8List)` → writes bytes to the correct path
 - `deleteAttachment(Attachment)` → removes the local file
 - `getTempPath()` → temp directory for in-progress downloads / conversions
+- `persistPickedAttachment(PlatformFile)` → copies ephemeral `file_picker` cache files into `draft_attachments/` under app docs so send/prep still finds them
+- `draftAttachmentsPath` → durable holding area for just-picked files
 
 ## Platform Paths
 - **Android/iOS**: `getApplicationDocumentsDirectory()` / `getExternalStorageDirectory()`

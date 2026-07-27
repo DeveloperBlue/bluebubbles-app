@@ -1,11 +1,48 @@
+import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/network/api/base_api.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:universal_io/io.dart';
 
 class AttachmentApi {
   final BaseApi _svc;
 
   AttachmentApi(this._svc);
+
+  /// Upload an attachment for later inclusion in a multipart message
+  /// (`POST /message/multipart`). Returns the raw response; the upload
+  /// identifier is at `data.path` (server >= v1.9.8) or `data.hash` (older).
+  ///
+  /// Requires the Private API and server v1.7.0+
+  /// ([ServerDetails.supportsMultipartAttachmentUpload]).
+  Future<Response> upload(
+    PlatformFile file, {
+    void Function(int, int)? onSendProgress,
+    CancelToken? cancelToken,
+  }) async {
+    return _svc.runApiGuarded(() async {
+      final formData = FormData.fromMap({
+        "attachment": kIsWeb
+            ? MultipartFile.fromBytes(file.bytes!, filename: file.name)
+            : await MultipartFile.fromFile(file.path!, filename: file.name),
+        "name": file.name,
+      });
+
+      final response = await _svc.dio.post(
+        "${_svc.apiRoot}/attachment/upload",
+        queryParameters: _svc.buildQueryParams(),
+        cancelToken: cancelToken,
+        data: formData,
+        onSendProgress: onSendProgress,
+        options: Options(
+          sendTimeout: _svc.dio.options.sendTimeout! * 12,
+          receiveTimeout: _svc.dio.options.receiveTimeout! * 12,
+          headers: _svc.headers,
+        ),
+      );
+      return _svc.returnSuccessOrError(response);
+    });
+  }
 
   /// Get the attachment data for the specified [guid]
   Future<Response> fetch(String guid, {CancelToken? cancelToken}) async {
