@@ -75,7 +75,7 @@ class MessagePartWrapper extends StatelessWidget {
         BubbleEffects(
           part: part.part,
           globalKey: globalKey,
-          showTail: !part.isPkPass && message.showTail(newerMessage) && part.part == controller.parts.length - 1,
+          showTail: !part.isPkPass && message.showTail(newerMessage) && controller.isTrailingMessagePart(part),
           child: MessagePopupHolder(
             key: globalKey,
             controller: controller,
@@ -186,12 +186,12 @@ class _MessageContentBubble extends StatelessWidget {
     return ClipPath(
       clipper: TailClipper(
         isFromMe: message.isFromMe!,
-        showTail: !part.isPkPass && message.showTail(newerMessage) && part.part == controller.parts.length - 1,
+        showTail: !part.isPkPass && message.showTail(newerMessage) && controller.isTrailingMessagePart(part),
         connectLower: SettingsSvc.settings.skin.value == Skins.iOS
             ? false
-            : (part.part != 0 && part.part != controller.parts.length - 1) ||
-                (part.part == 0 && controller.parts.length > 1),
-        connectUpper: SettingsSvc.settings.skin.value == Skins.iOS ? false : part.part != 0,
+            : (!controller.isLeadingMessagePart(part) && !controller.isTrailingMessagePart(part)) ||
+                (controller.isLeadingMessagePart(part) && controller.parts.length > 1),
+        connectUpper: SettingsSvc.settings.skin.value == Skins.iOS ? false : !controller.isLeadingMessagePart(part),
       ),
       child: Stack(
         alignment: Alignment.centerRight,

@@ -21,10 +21,14 @@ class SwipeToReplyWrapper extends StatefulWidget {
   });
 
   final bool enabled;
+
+  /// Message-part id being replied to
   final int partIndex;
   final RxDouble replyOffset;
   final ConversationViewController cvController;
   final Widget child;
+
+  /// When set, reply preview / send target a specific attachment within the part.
   final String? attachmentGuid;
 
   @override

@@ -398,7 +398,7 @@ class _CollectionGroupStackState extends State<CollectionGroupStack> with ThemeH
             messageParts: const [],
             part: widget.messagePart,
             reactionsForPart: (part, reactions) =>
-                reactions.where((s) => part.includesAssociatedPart(s.associatedMessagePart)),
+                reactions.where((s) => part.coversPartId(s.associatedMessagePart ?? 0)),
             minHeightWhenNoReactions: 4,
           ),
           cardCanvas,

@@ -6,7 +6,7 @@ Plain Dart classes — no ObjectBox annotations. Safe to use on web. All have `f
 | File | Purpose |
 |------|---------|
 | `settings.dart` | 50+ `Rx*` preference fields — the single source of truth for all app settings |
-| `message_part.dart` | One content chunk of a multi-part message |
+| `message_part.dart` | One content chunk of a multi-part message (`part` = message-part id; collapsed collections use `coversPartId` + `attachmentPartIndices`) |
 | `attributed_body.dart` | Rich text formatting metadata (bold, italic, mention, link, attachment) |
 | `message_summary_info.dart` | Reply/thread preview metadata |
 | `chat_messages.dart` | In-memory chat ↔ message list mapping (used by `MessagesService`) |

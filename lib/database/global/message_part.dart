@@ -14,7 +14,6 @@ class MessagePart {
     required this.part,
     this.shouldRedact = false,
     this.attachmentPartIndices,
-    this.firstPartIndex,
   }) {
     if (attachments.isEmpty) attachments = [];
     if (mentions.isEmpty) mentions = [];
@@ -52,30 +51,24 @@ class MessagePart {
   int part;
 
   /// For collection parts created by collapsing consecutive media-only parts,
-  /// maps each attachment (by index) to its original messagePart index.
+  /// maps each attachment (by index) to its original message-part id.
   /// Null for non-collection parts or single-source-part collections.
+  /// Collapsed bubbles set [part] to the first id in that span.
   List<int>? attachmentPartIndices;
 
-  /// First raw message-part index covered by a collapsed media collection.
-  /// Null for non-collection parts. Collections set [part] to the *last* raw
-  /// index (avatar/tail checks) and this to the *first* (leading-part UI).
-  int? firstPartIndex;
-
-  /// Whether this bubble is the leading content of the message (raw part 0).
-  bool get isLeadingMessagePart => (firstPartIndex ?? part) == 0;
-
-  /// Returns the real source message-part index for the attachment at [index].
-  /// Falls back to [part] for non-collection and single-source collection parts.
+  /// Returns the original message-part id for the attachment at [index].
+  /// Falls back to [part] if [attachmentPartIndices] is not set.
   int partIndexForAttachment(int index) => attachmentPartIndices?[index] ?? part;
 
-  /// Whether a reaction/sticker targeting a real message-part index belongs on this bubble.
-  bool includesAssociatedPart(int? associatedMessagePart) {
-    final index = associatedMessagePart ?? 0;
-    final indices = attachmentPartIndices;
-    if (indices != null && indices.isNotEmpty) {
-      return indices.contains(index);
-    }
-    return index == part;
+  /// Whether this bubble covers the raw message-part id [partId].
+  ///
+  /// For collapsed collections, [attachmentPartIndices] is the span of original
+  /// ids; otherwise only [part] is covered. Collapsed bubbles set [part] to the
+  /// first id in that span.
+  bool coversPartId(int partId) {
+    final span = attachmentPartIndices;
+    if (span != null && span.isNotEmpty) return span.contains(partId);
+    return part == partId;
   }
 
   bool get isEdited => edits.isNotEmpty;

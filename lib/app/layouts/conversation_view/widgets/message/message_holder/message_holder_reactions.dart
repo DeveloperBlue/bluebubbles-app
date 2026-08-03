@@ -69,7 +69,7 @@ class StickerObserver extends StatelessWidget {
       final allStickers = state.associatedMessages.where((e) => e.associatedMessageType == "sticker").toList();
       final stickersForPart = messageParts.length == 1
           ? allStickers
-          : allStickers.where((s) => part.includesAssociatedPart(s.associatedMessagePart)).toList();
+          : allStickers.where((s) => part.coversPartId(s.associatedMessagePart ?? 0)).toList();
 
       if (stickersForPart.isEmpty) return const SizedBox.shrink();
 
@@ -107,8 +107,8 @@ class ReactionSpacing extends StatelessWidget {
           .where((e) => ReactionTypes.toList().contains(e.associatedMessageType?.replaceAll("-", "")))
           .cast<Message>()
           .toList();
-      // Collection parts: includesAssociatedPart covers attachmentPartIndices, so this
-      // already reserves space for tapbacks on any collapsed original part index.
+      // Collection parts: coversPartId covers attachmentPartIndices, so this
+      // already reserves space for tapbacks on any collapsed original part id.
       if ((messageParts.length == 1 && reactions.isNotEmpty) || reactionsForPart(part, reactions).isNotEmpty) {
         return const SizedBox(height: 12.5);
       }

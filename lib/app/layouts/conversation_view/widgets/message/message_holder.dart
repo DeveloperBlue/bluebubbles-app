@@ -145,26 +145,21 @@ class _MessageHolderState extends State<MessageHolder> with ThemeHelpers {
 
       final groupedAttachments = <Attachment>[...current.attachments];
       final groupedPartIndices = <int>[...List.filled(current.attachments.length, current.part)];
-      int lastPart = current.part;
       int j = i + 1;
       while (j < parts.length) {
         final next = parts[j];
         if (!next.isMediaOnlyPart) break;
         groupedAttachments.addAll(next.attachments);
         groupedPartIndices.addAll(List.filled(next.attachments.length, next.part));
-        lastPart = next.part;
         j++;
       }
 
       if (groupedAttachments.length > 1) {
         collapsed.add(MessagePart(
           attachments: groupedAttachments,
-          // Use the last grouped raw part index (not the first) so downstream
-          // "is this the last part of the message" checks (e.g. avatar, tail)
-          // still resolve correctly against controller.parts.length.
-          part: lastPart,
-          // Preserve the first raw index for leading-part UI (subject chrome, etc.).
-          firstPartIndex: current.part,
+          // First raw id is the bubble's part id; attachmentPartIndices holds the
+          // full span. Trailing chrome uses MessageState.isTrailingMessagePart.
+          part: current.part,
           shouldRedact: current.shouldRedact,
           mentions: const [],
           edits: const [],
@@ -190,7 +185,7 @@ class _MessageHolderState extends State<MessageHolder> with ThemeHelpers {
     final avatarScale = SettingsSvc.settings.avatarScale.value;
 
     Iterable<Message> reactionsForPart(MessagePart part, List<Message> reactions) {
-      return reactions.where((s) => part.includesAssociatedPart(s.associatedMessagePart));
+      return reactions.where((s) => part.coversPartId(s.associatedMessagePart ?? 0));
     }
 
     /// Layout tree
@@ -408,7 +403,7 @@ class _MessageHolderState extends State<MessageHolder> with ThemeHelpers {
                                     children: [
                                       // avatar, if needed
                                       if (message.showTail(newerMessage) &&
-                                          e.part == controller.parts.length - 1 &&
+                                          controller.isTrailingMessagePart(e) &&
                                           (showAvatar || SettingsSvc.settings.alwaysShowAvatars.value) &&
                                           !message.isFromMe! &&
                                           !message.isGroupEvent)
@@ -482,7 +477,7 @@ class _MessageHolderState extends State<MessageHolder> with ThemeHelpers {
                                                         if ((message.hasApplePayloadData ||
                                                                 message.isLegacyUrlPreview ||
                                                                 message.isInteractive ||
-                                                                (e.isLeadingMessagePart &&
+                                                                (controller.isLeadingMessagePart(e) &&
                                                                     isNullOrEmpty(e.text) &&
                                                                     e.attachments.isNotEmpty)) &&
                                                             !isNullOrEmpty(message.subject))
@@ -494,11 +489,12 @@ class _MessageHolderState extends State<MessageHolder> with ThemeHelpers {
                                                                 showTail: false,
                                                                 connectLower: iOS
                                                                     ? false
-                                                                    : (!e.isLeadingMessagePart &&
-                                                                            e.part != controller.parts.length - 1) ||
-                                                                        (e.isLeadingMessagePart &&
+                                                                    : (!controller.isLeadingMessagePart(e) &&
+                                                                            !controller.isTrailingMessagePart(e)) ||
+                                                                        (controller.isLeadingMessagePart(e) &&
                                                                             controller.parts.length > 1),
-                                                                connectUpper: iOS ? false : !e.isLeadingMessagePart,
+                                                                connectUpper:
+                                                                    iOS ? false : !controller.isLeadingMessagePart(e),
                                                               ),
                                                               child: TextBubble(
                                                                 subjectOnly: true,
@@ -529,7 +525,7 @@ class _MessageHolderState extends State<MessageHolder> with ThemeHelpers {
                                                                   part: e.part,
                                                                   globalKey: keys.length > index ? keys[index] : null,
                                                                   showTail: message.showTail(newerMessage) &&
-                                                                      e.part == controller.parts.length - 1,
+                                                                      controller.isTrailingMessagePart(e),
                                                                   child: MessagePopupHolder(
                                                                     key: keys.length > index ? keys[index] : null,
                                                                     controller: controller,
@@ -589,16 +585,18 @@ class _MessageHolderState extends State<MessageHolder> with ThemeHelpers {
                                                                               isFromMe: message.isFromMe!,
                                                                               showTail: !e.isPkPass &&
                                                                                   message.showTail(newerMessage) &&
-                                                                                  e.part == controller.parts.length - 1,
+                                                                                  controller.isTrailingMessagePart(e),
                                                                               connectLower: iOS
                                                                                   ? false
-                                                                                  : (e.part != 0 &&
-                                                                                          e.part !=
-                                                                                              controller.parts.length -
-                                                                                                  1) ||
-                                                                                      (e.part == 0 &&
+                                                                                  : (!controller.isLeadingMessagePart(e) &&
+                                                                                          !controller
+                                                                                              .isTrailingMessagePart(e)) ||
+                                                                                      (controller
+                                                                                              .isLeadingMessagePart(e) &&
                                                                                           controller.parts.length > 1),
-                                                                              connectUpper: iOS ? false : e.part != 0,
+                                                                              connectUpper: iOS
+                                                                                  ? false
+                                                                                  : !controller.isLeadingMessagePart(e),
                                                                             ),
                                                                             child: inner,
                                                                           );

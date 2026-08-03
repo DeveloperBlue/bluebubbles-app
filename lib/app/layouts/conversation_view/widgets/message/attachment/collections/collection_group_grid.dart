@@ -176,7 +176,7 @@ class CollectionGroupGrid extends StatelessWidget {
             messageParts: const [],
             part: messagePart,
             reactionsForPart: (part, reactions) =>
-                reactions.where((s) => part.includesAssociatedPart(s.associatedMessagePart)),
+                reactions.where((s) => part.coversPartId(s.associatedMessagePart ?? 0)),
             minHeightWhenNoReactions: 4,
           ),
           const SizedBox(height: 4),
