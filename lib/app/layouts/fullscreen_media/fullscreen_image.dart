@@ -51,6 +51,9 @@ class _FullscreenImageState extends State<FullscreenImage>
   int? _livePhotoHoldPointer;
   Offset? _livePhotoHoldDownPos;
   bool _livePhotoHolding = false;
+  /// Listener is not in the gesture arena, so pointer-up after a hold still
+  /// resolves as a tap on the parent GestureDetector — swallow that one.
+  bool _suppressOverlayTapAfterHold = false;
   /// Locks PhotoView zoom/pan without setState (setState would rebuild the hold Listener).
   final RxBool _livePhotoLockPhotoView = false.obs;
   static const Duration _livePhotoHoldDelay = Duration(milliseconds: 400);
@@ -155,6 +158,10 @@ class _FullscreenImageState extends State<FullscreenImage>
     _livePhotoHoldDownPos = null;
     if (_livePhotoHolding) {
       _livePhotoHolding = false;
+      // Pointer-up after a hold still resolves as a tap; cancel does not.
+      if (event is PointerUpEvent) {
+        _suppressOverlayTapAfterHold = true;
+      }
       _setPhotoViewLocked(false);
       endLivePhotoHold();
     }
@@ -234,6 +241,10 @@ class _FullscreenImageState extends State<FullscreenImage>
       color: Colors.black,
       child: GestureDetector(
         onTap: () {
+          if (_suppressOverlayTapAfterHold) {
+            _suppressOverlayTapAfterHold = false;
+            return;
+          }
           if (!widget.showInteractions) return;
           bool newVal = !showOverlay;
           setState(() {
