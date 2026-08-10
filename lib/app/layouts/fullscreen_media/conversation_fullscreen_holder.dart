@@ -264,6 +264,7 @@ class ConversationFullscreenHolderState extends State<ConversationFullscreenHold
                         attachment: attachment,
                         file: content,
                         showInteractions: widget.showInteractions,
+                        showOverlay: showAppBar,
                         updatePhysics: (ScrollPhysics p) {
                           if (physics != p) {
                             setState(() {
