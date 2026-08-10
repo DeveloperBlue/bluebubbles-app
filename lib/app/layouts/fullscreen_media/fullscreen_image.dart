@@ -24,6 +24,7 @@ class FullscreenImage extends StatefulWidget {
     required this.attachment,
     required this.showInteractions,
     required this.updatePhysics,
+    required this.showOverlay,
     this.onOverlayToggle,
   });
 
@@ -31,6 +32,8 @@ class FullscreenImage extends StatefulWidget {
   final Attachment attachment;
   final bool showInteractions;
   final Function(ScrollPhysics) updatePhysics;
+  /// Shared with the parent gallery/viewer so every page stays in sync.
+  final bool showOverlay;
   final Function(bool)? onOverlayToggle;
 
   @override
@@ -40,7 +43,6 @@ class FullscreenImage extends StatefulWidget {
 class _FullscreenImageState extends State<FullscreenImage>
     with AutomaticKeepAliveClientMixin, LivePhotoMixin, ThemeHelpers {
   final PhotoViewController controller = PhotoViewController();
-  bool showOverlay = true;
   bool hasError = false;
   Uint8List? bytes;
   String? compatiblePath; // For converted HEIC/TIFF files
@@ -246,16 +248,7 @@ class _FullscreenImageState extends State<FullscreenImage>
             return;
           }
           if (!widget.showInteractions) return;
-          bool newVal = !showOverlay;
-          setState(() {
-            showOverlay = newVal;
-          });
-
-          if (widget.onOverlayToggle != null) {
-            widget.onOverlayToggle!(newVal);
-          }
-
-          // eventDispatcher.emit('overlay-toggle', newVal);
+          widget.onOverlayToggle?.call(!widget.showOverlay);
         },
         child: Stack(
           children: [
@@ -275,7 +268,7 @@ class _FullscreenImageState extends State<FullscreenImage>
               ),
             if (!iOS)
               AnimatedOpacity(
-                opacity: showOverlay ? 1.0 : 0.0,
+                opacity: widget.showOverlay ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 125),
                 child: Container(
                   height: kIsDesktop ? 80 : 100.0,
@@ -373,7 +366,7 @@ class _FullscreenImageState extends State<FullscreenImage>
                 right: 0,
                 bottom: 0,
                 child: AnimatedOpacity(
-                  opacity: showOverlay ? 1.0 : 0.0,
+                  opacity: widget.showOverlay ? 1.0 : 0.0,
                   duration: const Duration(milliseconds: 200),
                   child: SafeArea(
                     top: false,
@@ -432,7 +425,7 @@ class _FullscreenImageState extends State<FullscreenImage>
                 left: 16,
                 bottom: 16,
                 child: AnimatedOpacity(
-                  opacity: showOverlay ? 1.0 : 0.0,
+                  opacity: widget.showOverlay ? 1.0 : 0.0,
                   duration: const Duration(milliseconds: 200),
                   child: SafeArea(
                     top: false,
