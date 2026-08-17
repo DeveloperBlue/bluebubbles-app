@@ -117,6 +117,13 @@ android {
             resValue "string", "file_provider", "com.bluebubbles.messaging.tanay.fileprovider"
             applicationId "com.bluebubbles.messaging.tanay"
         }
+        canary {
+            dimension "app"
+            resValue "string", "app_name_en", "BlueBubbles (Personal Canary)"
+            resValue "color", "ic_launcher_background", "#4477db"
+            resValue "string", "file_provider", "com.bluebubbles.messaging.canary.fileprovider"
+            applicationId "com.bluebubbles.messaging.canary"
+        }
         alpha {
             dimension "app"
             resValue "string", "app_name_en", "BlueBubbles (Alpha)"
@@ -156,6 +163,7 @@ android {
             def releaseSigning = hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
             productFlavors.joel.signingConfig signingConfigs.debug
             productFlavors.tanay.signingConfig signingConfigs.debug
+            productFlavors.canary.signingConfig releaseSigning
             productFlavors.alpha.signingConfig releaseSigning
             productFlavors.beta.signingConfig releaseSigning
             productFlavors.prod.signingConfig releaseSigning
