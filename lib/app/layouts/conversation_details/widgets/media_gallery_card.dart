@@ -9,6 +9,7 @@ import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/app/layouts/fullscreen_media/conversation_fullscreen_holder.dart';
 import 'package:bluebubbles/app/components/circle_progress_bar.dart';
 import 'package:bluebubbles/app/components/avatars/contact_avatar_widget.dart';
+import 'package:bluebubbles/app/state/chat_state_scope.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/cupertino.dart';
@@ -26,6 +27,7 @@ class MediaGalleryCard extends StatefulWidget {
     this.showSenderAvatar = true,
     this.chat,
     this.galleryAttachments,
+    this.showJumpToMessage = false,
   });
   final Attachment attachment;
   final bool showSenderAvatar;
@@ -33,6 +35,7 @@ class MediaGalleryCard extends StatefulWidget {
 
   /// Limits fullscreen paging to this list instead of all chat images.
   final List<Attachment>? galleryAttachments;
+  final bool showJumpToMessage;
 
   @override
   State<MediaGalleryCard> createState() => _MediaGalleryCardState();
@@ -190,6 +193,7 @@ class _MediaGalleryCardState extends State<MediaGalleryCard> with AutomaticKeepA
                           file: file,
                           chat: widget.chat,
                           galleryAttachments: widget.galleryAttachments,
+                          showJumpToMessage: widget.showJumpToMessage,
                         )
                       : (attachment.mimeType?.startsWith("video") ?? false) && videoPreviewPath != null
                           ? ImageDisplay(
@@ -197,6 +201,7 @@ class _MediaGalleryCardState extends State<MediaGalleryCard> with AutomaticKeepA
                               imagePath: videoPreviewPath,
                               chat: widget.chat,
                               galleryAttachments: widget.galleryAttachments,
+                              showJumpToMessage: widget.showJumpToMessage,
                             )
                           : const SizedBox.shrink()
                   : const SizedBox.shrink(),
@@ -368,6 +373,7 @@ class _MediaGalleryCardState extends State<MediaGalleryCard> with AutomaticKeepA
             chat: widget.chat,
             galleryAttachments: widget.galleryAttachments,
             onPressChanged: _setPressed,
+            showJumpToMessage: widget.showJumpToMessage,
           );
           addPadding = false;
         } else if ((attachment.mimeType?.startsWith("video") ?? false) && !kIsDesktop && !kIsWeb) {
@@ -380,6 +386,7 @@ class _MediaGalleryCardState extends State<MediaGalleryCard> with AutomaticKeepA
               chat: widget.chat,
               galleryAttachments: widget.galleryAttachments,
               onPressChanged: _setPressed,
+              showJumpToMessage: widget.showJumpToMessage,
             );
             addPadding = false;
           } else if (videoPreviewFailed) {
@@ -435,6 +442,7 @@ class ImageDisplay extends StatefulWidget {
     this.chat,
     this.galleryAttachments,
     this.onPressChanged,
+    this.showJumpToMessage = false,
   });
 
   final Attachment attachment;
@@ -445,6 +453,7 @@ class ImageDisplay extends StatefulWidget {
   final Chat? chat;
   final List<Attachment>? galleryAttachments;
   final ValueChanged<bool>? onPressChanged;
+  final bool showJumpToMessage;
 
   @override
   State<ImageDisplay> createState() => _ImageDisplayState();
@@ -461,16 +470,18 @@ class _ImageDisplayState extends State<ImageDisplay> {
   @override
   Widget build(BuildContext context) {
     final double cardSize = NavigationSvc.width(context) / max(2, NavigationSvc.width(context) ~/ 200);
+    final currentChat = ChatStateScope.maybeChatOf(context);
 
     return OpenContainer(
       transitionDuration: Durations.medium4,
       closedShape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(M3EShapes.lg))),
       openBuilder: (_, closeContainer) {
         return ConversationFullscreenHolder(
-          currentChat: widget.chat,
+          currentChat: widget.chat ?? currentChat,
           attachment: attachment,
           showInteractions: true,
           galleryAttachments: widget.galleryAttachments,
+          showJumpToMessage: widget.showJumpToMessage,
         );
       },
       closedBuilder: (_, openContainer) {
