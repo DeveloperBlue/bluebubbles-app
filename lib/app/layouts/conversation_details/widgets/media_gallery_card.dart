@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:animations/animations.dart';
-import 'package:bluebubbles/app/components/image_blur_canvas.dart';
 import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/other_file.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
@@ -469,6 +468,39 @@ class _ImageDisplayState extends State<ImageDisplay> {
   String? get imagePath => widget.imagePath;
   Duration? get duration => widget.duration;
 
+  /// Crop-fills the square cell (`BoxFit.cover`) instead of letterboxing the full image.
+  Widget _buildCoverThumbnail(BuildContext context, double cardSize) {
+    final path = file?.path ?? imagePath;
+    final bytes = file?.bytes;
+    final cacheWidth = max(1, (cardSize * MediaQuery.of(context).devicePixelRatio).round());
+
+    if (path != null) {
+      return Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
+        cacheWidth: cacheWidth,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+      );
+    }
+    if (bytes != null) {
+      return Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
+        cacheWidth: cacheWidth,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   @override
   Widget build(BuildContext context) {
     final double cardSize = NavigationSvc.width(context) / max(2, NavigationSvc.width(context) ~/ 200);
@@ -501,11 +533,7 @@ class _ImageDisplayState extends State<ImageDisplay> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Blurred canvas: filled background + centered foreground.
-                    ImageBlurCanvas(
-                      filePath: file?.path ?? imagePath,
-                      bytes: file?.bytes,
-                    ),
+                    _buildCoverThumbnail(context, cardSize),
                     if ((attachment.mimeType?.contains("video") ?? false) && duration != null)
                       Positioned(
                         bottom: 10,

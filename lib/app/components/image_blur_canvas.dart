@@ -16,9 +16,7 @@ import 'package:flutter/material.dart';
 ///
 /// Either [filePath] or [bytes] must be provided.
 ///
-/// Used by:
-/// - [ImageDisplay] in the media gallery (square card background + foreground)
-/// - [ImageViewer] when rendering image previews inside a reply bubble
+/// Used by [ImageViewer] when rendering image previews inside a reply bubble.
 class ImageBlurCanvas extends StatelessWidget {
   const ImageBlurCanvas({
     super.key,
