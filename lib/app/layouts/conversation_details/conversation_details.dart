@@ -46,7 +46,10 @@ class _ConversationDetailsState extends State<ConversationDetails> with WidgetsB
   void dispose() {
     if (ChatsSvc.activeChat != null) {
       ChatsSvc.setActiveToAlive();
-      cvc(ChatsSvc.activeChat!.chat).lastFocusedNode.requestFocus();
+      // Desktop has no software keyboard. On mobile, never auto-open when the setting is off.
+      if (kIsDesktop || SettingsSvc.settings.autoOpenKeyboard.value) {
+        cvc(ChatsSvc.activeChat!.chat).lastFocusedNode.requestFocus();
+      }
     }
     super.dispose();
   }
