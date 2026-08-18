@@ -171,6 +171,7 @@ class _DocumentsSectionState extends State<DocumentsSection> with ThemeHelpers {
                 (context, int index) => MediaGalleryCard(
                   attachment: _displayedDocs[index],
                   showJumpToMessage: true,
+                  galleryAttachments: _displayedDocs,
                 ),
                 childCount: _visibleCount,
               ),
