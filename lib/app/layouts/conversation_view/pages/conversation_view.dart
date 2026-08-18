@@ -8,6 +8,7 @@ import 'package:bluebubbles/app/wrappers/gradient_background_wrapper.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/pages/messages_view.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/effects/screen_effects_widget.dart';
+import 'package:bluebubbles/app/layouts/findmy/findmy_participant_prefetch.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
@@ -70,6 +71,7 @@ class ConversationViewState extends State<ConversationView> with ThemeHelpers<Co
     controller.fromSearchResult = widget.initialScrollToGuid != null;
     ChatsSvc.setActiveChatSync(chat);
     ChatsSvc.activeChat?.controller = controller;
+    FindMyParticipantPrefetch.warm(chat);
     Logger.debug("Conversation View initialized for ${chat.guid}");
 
     controller.loadReplyToMessageState(); // P224b
@@ -208,6 +210,7 @@ class ConversationViewState extends State<ConversationView> with ThemeHelpers<Co
   void dispose() {
     routeObserver.unsubscribe(this);
     controller.saveReplyToMessageState(); // P8bda
+    FindMyParticipantPrefetch.dispose(chat.guid);
     super.dispose();
   }
 
