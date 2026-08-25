@@ -65,6 +65,44 @@ extension MediaFilterLabels on MediaFilter {
   }
 }
 
+/// Photo-only subfilters shown when [MediaFilter.images] is selected.
+enum PhotoSubfilter {
+  all,
+  livePhotos,
+  gifs,
+}
+
+extension PhotoSubfilterLabels on PhotoSubfilter {
+  String get label {
+    switch (this) {
+      case PhotoSubfilter.all:
+        return "All";
+      case PhotoSubfilter.livePhotos:
+        return "Live Photos";
+      case PhotoSubfilter.gifs:
+        return "GIFs";
+    }
+  }
+
+  String get emptyMessage {
+    switch (this) {
+      case PhotoSubfilter.all:
+        return "No photos";
+      case PhotoSubfilter.livePhotos:
+        return "No live photos";
+      case PhotoSubfilter.gifs:
+        return "No GIFs";
+    }
+  }
+}
+
+bool attachmentIsGif(Attachment attachment) {
+  final mime = attachment.mimeType?.toLowerCase();
+  if (mime != null && mime.contains("gif")) return true;
+  final name = attachment.transferName?.toLowerCase();
+  return name != null && name.endsWith(".gif");
+}
+
 List<Attachment> filterMedia(List<Attachment> media, MediaFilter filter) {
   switch (filter) {
     case MediaFilter.all:
@@ -73,6 +111,17 @@ List<Attachment> filterMedia(List<Attachment> media, MediaFilter filter) {
       return media.where((e) => e.mimeStart == "image").toList();
     case MediaFilter.videos:
       return media.where((e) => e.mimeStart == "video").toList();
+  }
+}
+
+List<Attachment> filterPhotosBySubfilter(List<Attachment> media, PhotoSubfilter filter) {
+  switch (filter) {
+    case PhotoSubfilter.all:
+      return media;
+    case PhotoSubfilter.livePhotos:
+      return media.where((e) => e.hasLivePhoto).toList();
+    case PhotoSubfilter.gifs:
+      return media.where(attachmentIsGif).toList();
   }
 }
 
@@ -159,11 +208,15 @@ List<Message> applyMessageFilters(
 List<Attachment> applyMediaFilters(
   List<Attachment> media, {
   required MediaFilter typeFilter,
+  PhotoSubfilter photoSubfilter = PhotoSubfilter.all,
   required MediaSenderFilter senderFilter,
   DateTime? sinceDate,
   bool bookmarkedOnly = false,
 }) {
   var result = filterMedia(media, typeFilter);
+  if (typeFilter == MediaFilter.images && photoSubfilter != PhotoSubfilter.all) {
+    result = filterPhotosBySubfilter(result, photoSubfilter);
+  }
   if (senderFilter.isActive) {
     result = result.where((e) => attachmentMatchesSenderFilter(e, senderFilter)).toList();
   }
@@ -197,6 +250,7 @@ enum AttachmentFiltersTypeSection {
 /// Shared filter state for attachment category pages.
 class AttachmentFiltersState {
   final MediaFilter mediaFilter;
+  final PhotoSubfilter photoSubfilter;
   final FileTypeFilter fileTypeFilter;
   final MediaSenderFilter senderFilter;
   final DateTime? sinceDate;
@@ -204,6 +258,7 @@ class AttachmentFiltersState {
 
   const AttachmentFiltersState({
     this.mediaFilter = MediaFilter.all,
+    this.photoSubfilter = PhotoSubfilter.all,
     this.fileTypeFilter = FileTypeFilter.all,
     this.senderFilter = const MediaSenderFilter.any(),
     this.sinceDate,
@@ -212,6 +267,7 @@ class AttachmentFiltersState {
 
   AttachmentFiltersState copyWith({
     MediaFilter? mediaFilter,
+    PhotoSubfilter? photoSubfilter,
     FileTypeFilter? fileTypeFilter,
     MediaSenderFilter? senderFilter,
     DateTime? sinceDate,
@@ -220,6 +276,7 @@ class AttachmentFiltersState {
   }) {
     return AttachmentFiltersState(
       mediaFilter: mediaFilter ?? this.mediaFilter,
+      photoSubfilter: photoSubfilter ?? this.photoSubfilter,
       fileTypeFilter: fileTypeFilter ?? this.fileTypeFilter,
       senderFilter: senderFilter ?? this.senderFilter,
       sinceDate: clearSinceDate ? null : (sinceDate ?? this.sinceDate),
@@ -230,7 +287,11 @@ class AttachmentFiltersState {
   bool hasActiveFilter(AttachmentFiltersTypeSection typeSection) {
     switch (typeSection) {
       case AttachmentFiltersTypeSection.media:
-        return mediaFilter != MediaFilter.all || senderFilter.isActive || sinceDate != null || bookmarkedOnly;
+        return mediaFilter != MediaFilter.all ||
+            photoSubfilter != PhotoSubfilter.all ||
+            senderFilter.isActive ||
+            sinceDate != null ||
+            bookmarkedOnly;
       case AttachmentFiltersTypeSection.files:
         return fileTypeFilter != FileTypeFilter.all || senderFilter.isActive || sinceDate != null || bookmarkedOnly;
       case AttachmentFiltersTypeSection.none:
@@ -243,6 +304,7 @@ class AttachmentFiltersState {
     if (identical(this, other)) return true;
     return other is AttachmentFiltersState &&
         other.mediaFilter == mediaFilter &&
+        other.photoSubfilter == photoSubfilter &&
         other.fileTypeFilter == fileTypeFilter &&
         other.senderFilter == senderFilter &&
         other.sinceDate == sinceDate &&
@@ -250,7 +312,7 @@ class AttachmentFiltersState {
   }
 
   @override
-  int get hashCode => Object.hash(mediaFilter, fileTypeFilter, senderFilter, sinceDate, bookmarkedOnly);
+  int get hashCode => Object.hash(mediaFilter, photoSubfilter, fileTypeFilter, senderFilter, sinceDate, bookmarkedOnly);
 }
 
 FileTypeFilter classifyFileAttachment(Attachment attachment) {

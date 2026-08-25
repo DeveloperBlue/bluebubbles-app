@@ -44,14 +44,17 @@ void showAttachmentFiltersSheet(
 
           void updateFilters({
             MediaFilter? type,
+            PhotoSubfilter? photoSubfilter,
             FileTypeFilter? fileType,
             MediaSenderFilter? sender,
             DateTime? date,
             bool clearDate = false,
             bool? bookmarkedOnly,
           }) {
+            final nextType = type ?? currentFilters.mediaFilter;
             currentFilters = currentFilters.copyWith(
               mediaFilter: type,
+              photoSubfilter: nextType != MediaFilter.images ? PhotoSubfilter.all : photoSubfilter,
               fileTypeFilter: fileType,
               senderFilter: sender,
               sinceDate: date,
@@ -216,6 +219,25 @@ void showAttachmentFiltersSheet(
                           (selected) => updateFilters(type: selected ? MediaFilter.videos : MediaFilter.all),
                         ),
                     ]),
+                    if (currentFilters.mediaFilter == MediaFilter.images)
+                      chipWrap([
+                        if (currentFilters.photoSubfilter != PhotoSubfilter.gifs)
+                          filterChip(
+                            PhotoSubfilter.livePhotos.label,
+                            currentFilters.photoSubfilter == PhotoSubfilter.livePhotos,
+                            (selected) => updateFilters(
+                              photoSubfilter: selected ? PhotoSubfilter.livePhotos : PhotoSubfilter.all,
+                            ),
+                          ),
+                        if (currentFilters.photoSubfilter != PhotoSubfilter.livePhotos)
+                          filterChip(
+                            PhotoSubfilter.gifs.label,
+                            currentFilters.photoSubfilter == PhotoSubfilter.gifs,
+                            (selected) => updateFilters(
+                              photoSubfilter: selected ? PhotoSubfilter.gifs : PhotoSubfilter.all,
+                            ),
+                          ),
+                      ]),
                   ],
                   if (typeSection == AttachmentFiltersTypeSection.files) ...[
                     sectionLabel("Types"),

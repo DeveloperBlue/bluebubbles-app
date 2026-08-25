@@ -22,6 +22,7 @@ class MediaGridSection extends StatefulWidget {
   final bool fullPage;
   final int? crossAxisCount;
   final MediaFilter mediaFilter;
+  final PhotoSubfilter photoSubfilter;
   final MediaSenderFilter senderFilter;
   final DateTime? sinceDate;
   final bool bookmarkedOnly;
@@ -36,6 +37,7 @@ class MediaGridSection extends StatefulWidget {
     this.fullPage = false,
     this.crossAxisCount,
     this.mediaFilter = MediaFilter.all,
+    this.photoSubfilter = PhotoSubfilter.all,
     this.senderFilter = const MediaSenderFilter.any(),
     this.sinceDate,
     this.bookmarkedOnly = false,
@@ -54,6 +56,7 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
   List<Attachment> get _filteredMedia => applyMediaFilters(
         widget.media,
         typeFilter: widget.mediaFilter,
+        photoSubfilter: widget.photoSubfilter,
         senderFilter: widget.senderFilter,
         sinceDate: widget.sinceDate,
         bookmarkedOnly: widget.bookmarkedOnly,
@@ -72,6 +75,9 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
       _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
     }
     if (oldWidget.mediaFilter != widget.mediaFilter) {
+      _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
+    }
+    if (oldWidget.photoSubfilter != widget.photoSubfilter) {
       _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
     }
     if (oldWidget.senderFilter != widget.senderFilter) {
@@ -217,7 +223,11 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
             padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 20.0),
             child: Center(
               child: Text(
-                widget.fullPage ? widget.mediaFilter.emptyMessage : "No photos or videos",
+                widget.fullPage
+                    ? (widget.mediaFilter == MediaFilter.images && widget.photoSubfilter != PhotoSubfilter.all
+                        ? widget.photoSubfilter.emptyMessage
+                        : widget.mediaFilter.emptyMessage)
+                    : "No photos or videos",
                 style: context.theme.textTheme.bodyMedium!.copyWith(
                   color: context.theme.colorScheme.outline,
                 ),

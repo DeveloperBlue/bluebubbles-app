@@ -71,6 +71,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
         final filtered = applyMediaFilters(
           media,
           typeFilter: filters.mediaFilter,
+          photoSubfilter: filters.photoSubfilter,
           senderFilter: filters.senderFilter,
           sinceDate: filters.sinceDate,
           bookmarkedOnly: filters.bookmarkedOnly,
@@ -80,7 +81,10 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
     });
   }
 
-  void _onMediaFilterChanged(MediaFilter filter) => _onFiltersChanged(_filters.copyWith(mediaFilter: filter));
+  void _onMediaFilterChanged(MediaFilter filter) => _onFiltersChanged(_filters.copyWith(
+        mediaFilter: filter,
+        photoSubfilter: filter == MediaFilter.images ? _filters.photoSubfilter : PhotoSubfilter.all,
+      ));
 
   @override
   void initState() {
@@ -164,6 +168,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             isLoading: isLoadingAttachments,
             fullPage: true,
             mediaFilter: _filters.mediaFilter,
+            photoSubfilter: _filters.photoSubfilter,
             senderFilter: _filters.senderFilter,
             sinceDate: _filters.sinceDate,
             bookmarkedOnly: _filters.bookmarkedOnly,
