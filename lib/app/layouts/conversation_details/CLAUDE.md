@@ -39,7 +39,7 @@ of the iOS widgets below based on `SettingsSvc.settings.skin.value`. See
 - `filters/media_filters_sheet.dart` — shared filters bottom sheet
 
 **Shared Content (`sections/`)**
-- `sections/media/` — images & videos grid + inline type selector
-- `sections/links/` — shared URLs list + search helper
-- `sections/documents/` — shared files list + search helper
-- `sections/locations/` — shared location messages list
+- `sections/media/` — images & videos grid + inline type selector; long-press opens the message popup
+- `sections/links/` — shared URLs list + search helper; long-press opens the message popup
+- `sections/documents/` — shared files list + search helper; long-press opens the message popup
+- `sections/locations/` — shared location messages list; long-press opens the message popup

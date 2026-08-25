@@ -42,7 +42,7 @@ Action routing by origin:
 
 ## How It Works
 
-1. `MessagePopupHolder` (conversation) or a details binder measures the child and calls `showMessagePopup(...)`.
+1. `MessagePopupHolder` (conversation) or `DetailsMessagePopupBinder` (details media, files, links, and locations) measures the child and calls `showMessagePopup(...)`.
 2. `showMessagePopup` captures theme/`ChatStateScope` and pushes `MessagePopup` inside `PopupScope`.
 3. `MessagePopup` computes action availability and ordering in `_allActions`.
 4. Each menu action callback builds a `MessagePopupActionContext` and dispatches into `actions/*.dart`.
