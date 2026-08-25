@@ -219,9 +219,27 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
     // was pushed past, so no avatar/group special-casing is needed here.
     final overlayWidth = MediaQuery.sizeOf(context).width;
     final menuWidth = _detailsMenuWidth(overlayWidth);
-    final preferredMenuLeft = message.isFromMe! ? overlayWidth - 15 - menuWidth : widget.childPosition.dx + 10;
-    final menuLeft = _clampedLeft(preferredMenuLeft, menuWidth, overlayWidth);
     final childLeft = _clampedLeft(widget.childPosition.dx, widget.size.width, overlayWidth, padding: 0);
+    late final Alignment popupAlign;
+    late final double preferredMenuLeft;
+    if (widget.origin == MessagePopupOrigin.details) {
+      // Left / center / right third of the overlay — so a 3-column tile stays with its column.
+      final tileCenter = childLeft + widget.size.width / 2;
+      if (tileCenter < overlayWidth / 3) {
+        popupAlign = Alignment.centerLeft;
+        preferredMenuLeft = childLeft;
+      } else if (tileCenter > overlayWidth * 2 / 3) {
+        popupAlign = Alignment.centerRight;
+        preferredMenuLeft = childLeft + widget.size.width - menuWidth;
+      } else {
+        popupAlign = Alignment.center;
+        preferredMenuLeft = childLeft + (widget.size.width - menuWidth) / 2;
+      }
+    } else {
+      popupAlign = message.isFromMe! ? Alignment.centerRight : Alignment.centerLeft;
+      preferredMenuLeft = message.isFromMe! ? overlayWidth - 15 - menuWidth : widget.childPosition.dx + 10;
+    }
+    final menuLeft = _clampedLeft(preferredMenuLeft, menuWidth, overlayWidth);
 
     bool narrowScreen = false;
     if (showTapbacks) {
@@ -342,7 +360,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                         builder: (context, size, child) {
                           return Transform.scale(
                             scale: size.clamp(1, double.infinity),
-                            alignment: message.isFromMe! ? Alignment.centerRight : Alignment.centerLeft,
+                            alignment: popupAlign,
                             child: child,
                           );
                         },
