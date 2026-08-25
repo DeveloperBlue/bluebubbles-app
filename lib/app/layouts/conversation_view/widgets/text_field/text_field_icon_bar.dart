@@ -87,12 +87,13 @@ class TextFieldIconBar extends StatelessWidget {
                     showSnackbar("Error", "This file is over 1 GB! Please compress it before sending.");
                     continue;
                   }
-                  controller.pickedAttachments.add(PlatformFile(
+                  final persisted = await FilesystemSvc.persistPickedAttachment(PlatformFile(
                     path: e.path,
                     name: e.name,
                     size: e.size,
                     bytes: await readByteStream(e.readStream!),
                   ));
+                  controller.pickedAttachments.add(persisted);
                 }
               } else if (kIsWeb) {
                 showBBDialog(

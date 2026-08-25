@@ -87,6 +87,13 @@ class OutgoingAttachment extends OutgoingQueueItem {
 }
 
 class OutgoingMultipartMessage extends OutgoingQueueItem {
+  /// Staged attachments to upload (via `POST /attachment/upload`) and include
+  /// as attachment parts. Empty for mention-only multipart sends.
+  ///
+  /// Unlike [OutgoingAttachment], each attachment carries its OWN temp GUID
+  /// (distinct from the message's) so per-attachment progress, disk paths,
+  /// and GUID swaps stay 1:1 when a message has several attachments.
+  List<Attachment> attachments;
   @override
   bool isRetry;
   @override
@@ -96,6 +103,7 @@ class OutgoingMultipartMessage extends OutgoingQueueItem {
     super.completer,
     required super.chat,
     required super.message,
+    this.attachments = const [],
     this.isRetry = false,
     this.clearNotificationsIfFromMe = true,
   }) : super(type: QueueType.sendMultipart);

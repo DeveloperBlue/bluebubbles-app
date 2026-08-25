@@ -14,7 +14,8 @@ Each resource has an interface and a concrete action file → `interfaces/CLAUDE
 
 ## Outgoing Message Handler
 - `outgoing_message_handler.dart` — `OutgoingMessageHandler` / `OutgoingMsgHandler` GetIt getter
-- Owns the complete outbound send pipeline: serial queue, `_buildOutgoingMessages` / `_persistOutgoingMessages` / `prepAttachment`, HTTP + socket race via `_sendWithRace()`, send-progress trackers, GUID swap (`_matchMessageWithExisting()`), and error marking
+- Owns the complete outbound send pipeline: serial queue, `_buildOutgoingMessages` / `_persistOutgoingMessages` / `prepAttachment` / `prepMultipartAttachments`, HTTP + socket race via `_sendWithRace()`, send-progress trackers, GUID swap (`_matchMessageWithExisting()`), and error marking
+- Multipart sends can carry attachments (uploaded via `/attachment/upload` inside the isolate, one part per attachment); gated by `canSendMultipartAttachments` (Private API + server ≥ v1.7.0). See `docs/MESSAGE_SEND_FLOW.md`
 
 ## Incoming Message Handler
 - `incoming_message_handler.dart` — `IncomingMessageHandler` / `IncomingMsgHandler` GetIt getter

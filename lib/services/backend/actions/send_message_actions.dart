@@ -55,17 +55,65 @@ class SendMessageActions {
     return response.data as Map<String, dynamic>;
   }
 
-  /// Sends a multipart (mention / mixed-content) message via HTTP.
+  /// Sends a multipart (mention / mixed-content / attachment) message via HTTP.
+  ///
+  /// When [data] contains an `attachments` list, each staged file is first
+  /// uploaded via `POST /attachment/upload` (progress reported per attachment
+  /// through [IsolateEvent.attachmentUploadProgress]), and the returned upload
+  /// id is substituted into the matching part's `attachment` field before the
+  /// multipart request fires.
   static Future<Map<String, dynamic>> sendMultipartMessage(dynamic data) async {
     final map = data as Map<String, dynamic>;
     final chatGuid = map['chatGuid'] as String;
     final tempGuid = map['tempGuid'] as String;
     final parts = (map['parts'] as List).cast<Map<String, dynamic>>();
+    final attachments = (map['attachments'] as List? ?? const []).cast<Map<String, dynamic>>();
     final effectId = map['effectId'] as String?;
     final subject = map['subject'] as String?;
     final selectedMessageGuid = map['selectedMessageGuid'] as String?;
     final partIndex = map['partIndex'] as int?;
     final ddScan = map['ddScan'] as bool?;
+
+    for (final att in attachments) {
+      final attachmentGuid = att['tempGuid'] as String;
+      final filePath = att['filePath'] as String;
+      final fileName = att['fileName'] as String;
+      final fileSize = att['fileSize'] as int? ?? 0;
+
+      final uploadResponse = await HttpSvc.attachment.upload(
+        PlatformFile(
+          name: fileName,
+          path: filePath,
+          size: fileSize,
+        ),
+        onSendProgress: (count, total) {
+          if (total <= 0) return;
+          IsolateEventEmitter.emit(
+            IsolateEvent.attachmentUploadProgress,
+            {
+              'chatGuid': chatGuid,
+              'messageGuid': tempGuid,
+              'attachmentGuid': attachmentGuid,
+              'progress': count / total,
+            },
+          );
+        },
+      );
+
+      final uploadData = uploadResponse.data?['data'];
+      // Server >= v1.9.8 returns `path`; older servers return `hash`.
+      final uploadId = uploadData is Map ? (uploadData['path'] ?? uploadData['hash'])?.toString() : null;
+      if (uploadId == null) {
+        throw StateError('Attachment upload for $fileName returned no path/hash: ${uploadResponse.data}');
+      }
+
+      final part = parts.firstWhere(
+        (p) => p['attachmentTempGuid'] == attachmentGuid,
+        orElse: () => throw StateError('No multipart part references uploaded attachment $attachmentGuid'),
+      );
+      part['attachment'] = uploadId;
+      part.remove('attachmentTempGuid');
+    }
 
     final response = await HttpSvc.message.sendMultipart(
       chatGuid,
@@ -119,6 +167,9 @@ class SendMessageActions {
           {
             'chatGuid': chatGuid,
             'messageGuid': tempGuid,
+            // Legacy single-attachment sends share one GUID between message
+            // and attachment (see send_animation.dart).
+            'attachmentGuid': tempGuid,
             'progress': count / total,
           },
         );

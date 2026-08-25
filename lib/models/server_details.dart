@@ -73,6 +73,10 @@ class ServerDetails {
   /// Send attachments via the Private API (v1.5.3).
   bool get supportsPrivateApiAttachmentSend => serverVersionCode >= 208;
 
+  /// Upload attachments via `POST /attachment/upload` for inclusion in
+  /// multipart messages (Private API required, v1.7.0).
+  bool get supportsMultipartAttachmentUpload => serverVersionCode >= 247;
+
   /// Private API group chat management — update/delete group icon, leave a
   /// group chat, and send handwritten / Digital Touch messages (v1.6.0).
   bool get supportsGroupChatManagement => serverVersionCode >= 226;

@@ -11,7 +11,9 @@ UI for selecting media files to attach before sending a message.
 
 ## Integration
 Opened from the compose bar via the attachment (paperclip / `+`) button in `widgets/text_field/`.
-Selected attachments are stored in `ConversationViewController.pickedImages`.
+Selected attachments are stored in `ConversationViewController.pickedAttachments`.
+Picked files are copied into `FilesystemSvc.draftAttachmentsPath` immediately so
+Android's ephemeral `file_picker` cache cannot disappear before send/prep.
 
 ## Related
 - Compose bar: `../text_field/CLAUDE.md`

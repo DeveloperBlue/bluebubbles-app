@@ -1,6 +1,7 @@
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/helpers/backend/startup_tasks.dart';
 import 'package:bluebubbles/database/database.dart';
+import 'package:bluebubbles/database/global/platform_file.dart';
 import 'package:bluebubbles/services/backend/java_dart_interop/method_channel_service.dart';
 import 'package:characters/characters.dart';
 import 'package:crypto/crypto.dart';
@@ -69,11 +70,18 @@ class FilesystemService {
   String get customBackgroundsPath => join(appDocDir.path, 'custom_backgrounds');
   String get urlPreviewsPath => join(appDocDir.path, 'url_previews');
 
+  /// Durable holding area for files just picked from the system file picker.
+  ///
+  /// Android's `file_picker` cache under `cache/file_picker/` is ephemeral —
+  /// the OS (or a later picker invocation) can delete it before send/prep
+  /// runs. Draft attachments live under [appDocDir] so their paths stay valid
+  /// until the composer clears them.
+  String get draftAttachmentsPath => join(appDocDir.path, 'draft_attachments');
+
   /// Returns the path for a cached URL preview image identified by its content
   /// hash. Accepts hashes written by older versions too, since the filename is
   /// whatever was persisted on the message.
   String urlPreviewImagePath(String hash) => join(urlPreviewsPath, hash);
-
   /// Caches a URL preview image, keyed by the SHA-256 of its bytes.
   ///
   /// Content addressing means identical images shared across messages occupy a
@@ -106,6 +114,35 @@ class FilesystemService {
   /// Strips non-alphanumeric characters from [guid] so it is safe for use as
   /// a filesystem path component (matches the pattern used by AvatarCrop, etc.).
   static String sanitizeGuid(String guid) => guid.characters.where((c) => c.isAlphabetOnly || c.isNumericOnly).join();
+
+  /// Copies a just-picked file out of ephemeral picker cache into
+  /// [draftAttachmentsPath] so the path remains valid until send/prep.
+  ///
+  /// No-op when [file] is already bytes-only, already under [appDocDir], or
+  /// the source cannot be read (returns [file] unchanged in those cases —
+  /// callers should still handle a later staging failure gracefully).
+  Future<PlatformFile> persistPickedAttachment(PlatformFile file) async {
+    if (kIsWeb) return file;
+    final sourcePath = file.path;
+    if (sourcePath == null) return file;
+    if (sourcePath.startsWith(appDocDir.path)) return file;
+
+    final source = File(sourcePath);
+    if (!await source.exists()) return file;
+
+    final dir = Directory(draftAttachmentsPath);
+    await dir.create(recursive: true);
+    final safeName = basename(sourcePath).replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    final destPath = join(draftAttachmentsPath, '${DateTime.now().microsecondsSinceEpoch}_$safeName');
+    await source.copy(destPath);
+    return PlatformFile(
+      path: destPath,
+      name: file.name,
+      size: file.size,
+      bytes: file.bytes,
+      balloonBundleId: file.balloonBundleId,
+    );
+  }
 
   /// Returns the canonical path where a chat's group avatar is stored.
   /// The file does not necessarily exist yet; callers must create it if needed.
