@@ -157,7 +157,9 @@ class _DocumentsSectionState extends State<DocumentsSection> with ThemeHelpers {
           )
         else ...[
           SliverPadding(
-            padding: attachmentSectionListPadding(),
+            padding: attachmentSectionListPadding(
+              top: widget.fullPage ? 10 : 0,
+            ),
             sliver: SliverGrid(
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: _gridCrossAxisCount,
