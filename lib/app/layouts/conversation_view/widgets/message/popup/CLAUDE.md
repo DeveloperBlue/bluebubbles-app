@@ -6,9 +6,10 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 
 | File | Purpose |
 |------|---------|
-| `message_popup_holder.dart` | `GestureDetector` wrapper inside message bubbles; triggers popup presentation |
+| `show_message_popup.dart` | Shared presenter (`showMessagePopup`) plus `PopupScope`; pushes the overlay route |
+| `message_popup_holder.dart` | `GestureDetector` wrapper inside message bubbles; scopes gallery parts then calls `showMessagePopup` |
 | `message_popup.dart` | Core popup layout/composition and action availability rules |
-| `message_popup_action_context.dart` | Shared typed context passed to extracted action functions |
+| `message_popup_action_context.dart` | Shared typed context passed to extracted action functions; `MessagePopupOrigin` |
 | `details_menu_action.dart` | Individual menu action row widget |
 | `reaction_picker_clipper.dart` | `CustomClipper` for tapback picker shape |
 | `actions/media_actions.dart` | Attachment/media actions (save/open/share/copy/redownload) |
@@ -26,13 +27,15 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 - Capability flags: `serverDetails`, `isEmbeddedMedia`
 - Related entities: `dmChat`
 - Action metadata: `action`
+- Origin: `origin`
 
 ## How It Works
 
-1. `MessagePopupHolder` triggers `showMessagePopup(...)` from a message bubble.
-2. `MessagePopup` computes action availability and ordering in `_allActions`.
-3. Each menu action callback builds a `MessagePopupActionContext` and dispatches into `actions/*.dart`.
-4. Action functions own behavior; `message_popup.dart` owns visibility conditions and layout.
+1. `MessagePopupHolder` (conversation) or a details binder measures the child and calls `showMessagePopup(...)`.
+2. `showMessagePopup` captures theme/`ChatStateScope` and pushes `MessagePopup` inside `PopupScope`.
+3. `MessagePopup` computes action availability and ordering in `_allActions`.
+4. Each menu action callback builds a `MessagePopupActionContext` and dispatches into `actions/*.dart`.
+5. Action functions own behavior; `message_popup.dart` owns visibility conditions and layout.
 
 ## Adding a New Popup Action
 

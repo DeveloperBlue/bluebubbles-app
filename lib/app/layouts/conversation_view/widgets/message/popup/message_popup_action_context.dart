@@ -5,6 +5,13 @@ import 'package:bluebubbles/services/ui/chat/conversation_view_controller.dart';
 import 'package:bluebubbles/services/ui/message/messages_service.dart';
 import 'package:flutter/widgets.dart';
 
+/// Where the message popup was opened from. Controls tapback chrome, Material
+/// selection highlighting, and (later) origin-specific action routing.
+enum MessagePopupOrigin {
+  conversation,
+  details,
+}
+
 class MessagePopupServerDetails {
   final bool minSierra;
   final bool minBigSur;
@@ -32,6 +39,7 @@ class MessagePopupActionContext {
   final void Function(String title, String body) showSnack;
   final Chat? dmChat;
   final bool isEmbeddedMedia;
+  final MessagePopupOrigin origin;
 
   const MessagePopupActionContext({
     required this.context,
@@ -48,5 +56,6 @@ class MessagePopupActionContext {
     required this.showSnack,
     required this.dmChat,
     required this.isEmbeddedMedia,
+    this.origin = MessagePopupOrigin.conversation,
   });
 }

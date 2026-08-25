@@ -35,7 +35,7 @@ import 'package:sprung/sprung.dart';
 import 'package:universal_io/io.dart';
 
 export 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/message_popup_action_context.dart'
-    show MessagePopupServerDetails;
+    show MessagePopupServerDetails, MessagePopupOrigin;
 
 class MessagePopup extends StatefulWidget {
   final Offset childPosition;
@@ -47,6 +47,7 @@ class MessagePopup extends StatefulWidget {
   final MessagePopupServerDetails serverDetails;
   final Function([String? type, int? part]) sendTapback;
   final BuildContext? Function() widthContext;
+  final MessagePopupOrigin origin;
 
   const MessagePopup({
     super.key,
@@ -59,6 +60,7 @@ class MessagePopup extends StatefulWidget {
     required this.serverDetails,
     required this.sendTapback,
     required this.widthContext,
+    this.origin = MessagePopupOrigin.conversation,
   });
 
   @override
@@ -129,6 +131,8 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
 
   BuildContext get widthContext => widget.widthContext.call() ?? context;
 
+  bool get showTapbacks => widget.origin == MessagePopupOrigin.conversation;
+
   @override
   void initState() {
     super.initState();
@@ -144,15 +148,17 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final measuredHeight = _childKey.currentContext?.size?.height;
       currentlySelectedReaction = null;
-      reactions = getUniqueReactionMessages(message.associatedMessages
-          .where((e) =>
-              ReactionTypes.toList().contains(e.associatedMessageType?.replaceAll("-", "")) &&
-              (e.associatedMessagePart ?? 0) == part.part)
-          .toList());
-      final self = reactions.firstWhereOrNull((e) => e.isFromMe!)?.associatedMessageType;
-      if (!(self?.contains("-") ?? true)) {
-        selfReaction = self;
-        currentlySelectedReaction = selfReaction;
+      if (showTapbacks) {
+        reactions = getUniqueReactionMessages(message.associatedMessages
+            .where((e) =>
+                ReactionTypes.toList().contains(e.associatedMessageType?.replaceAll("-", "")) &&
+                (e.associatedMessagePart ?? 0) == part.part)
+            .toList());
+        final self = reactions.firstWhereOrNull((e) => e.isFromMe!)?.associatedMessageType;
+        if (!(self?.contains("-") ?? true)) {
+          selfReaction = self;
+          currentlySelectedReaction = selfReaction;
+        }
       }
       setState(() {
         if (iOS) {
@@ -189,15 +195,18 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
     // real horizontal space available at the picker's anchor position, rather than guessing from
     // overall screen width. widget.childPosition.dx already reflects any avatar space the bubble
     // was pushed past, so no avatar/group special-casing is needed here.
-    final double screenWidth = NavigationSvc.width(widthContext);
-    const double reactionPickerEdgeMargin = 15;
-    final double reactionPickerAvailableWidth = message.isFromMe!
-        ? screenWidth - reactionPickerEdgeMargin - reactionPickerEdgeMargin
-        : screenWidth - (widget.childPosition.dx + 10) - reactionPickerEdgeMargin;
-    final double reactionItemWidth = iOS ? 47.0 : 44.0; // icon/emoji + its fixed padding, see item build below
-    // + container padding
-    final double reactionRowContentWidth = reactionItemWidth * ReactionTypes.toList().length + 10;
-    bool narrowScreen = reactionRowContentWidth > reactionPickerAvailableWidth;
+    bool narrowScreen = false;
+    if (showTapbacks) {
+      final double screenWidth = NavigationSvc.width(widthContext);
+      const double reactionPickerEdgeMargin = 15;
+      final double reactionPickerAvailableWidth = message.isFromMe!
+          ? screenWidth - reactionPickerEdgeMargin - reactionPickerEdgeMargin
+          : screenWidth - (widget.childPosition.dx + 10) - reactionPickerEdgeMargin;
+      final double reactionItemWidth = iOS ? 47.0 : 44.0; // icon/emoji + its fixed padding, see item build below
+      // + container padding
+      final double reactionRowContentWidth = reactionItemWidth * ReactionTypes.toList().length + 10;
+      narrowScreen = reactionRowContentWidth > reactionPickerAvailableWidth;
+    }
 
     return Theme(
       data: context.theme.copyWith(
@@ -311,7 +320,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                         },
                       ),
                     ),
-                  if (iOS)
+                  if (iOS && showTapbacks)
                     Positioned(
                       top: 40,
                       left: 15,
@@ -323,7 +332,11 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                         child: reactions.isNotEmpty ? ReactionDetails(reactions: reactions) : const SizedBox.shrink(),
                       ),
                     ),
-                  if (SettingsSvc.settings.enablePrivateAPI.value && isSent && minSierra && chat.isIMessage)
+                  if (showTapbacks &&
+                      SettingsSvc.settings.enablePrivateAPI.value &&
+                      isSent &&
+                      minSierra &&
+                      chat.isIMessage)
                     Positioned(
                       bottom: (iOS
                               ? itemHeight * numberToShow + 35 + (_measuredChildHeight ?? widget.size.height)
@@ -511,6 +524,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
       showSnack: showSnackbar,
       dmChat: dmChat,
       isEmbeddedMedia: isEmbeddedMedia,
+      origin: widget.origin,
     );
   }
 
