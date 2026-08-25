@@ -60,6 +60,12 @@ void showAttachmentFiltersSheet(
             setSheetState(() {});
           }
 
+          void resetFilters() {
+            currentFilters = const AttachmentFiltersState();
+            onChanged(currentFilters);
+            setSheetState(() {});
+          }
+
           Widget sectionLabel(String label) => Padding(
                 padding: const EdgeInsets.only(top: 16, left: 10),
                 child: Text(label, style: sectionLabelStyle),
@@ -106,7 +112,7 @@ void showAttachmentFiltersSheet(
                         icon: Icon(SettingsSvc.settings.skin.value == Skins.iOS
                             ? CupertinoIcons.restart
                             : Icons.restore),
-                        onPressed: () {},
+                        onPressed: currentFilters.hasActiveFilter(typeSection) ? resetFilters : null,
                       ),
                       Expanded(
                         child: Center(
