@@ -618,7 +618,11 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
           onTap: () => popup_media_actions.downloadLivePhoto(_buildActionContext(DetailsMenuAction.SaveLivePhoto)),
           action: DetailsMenuAction.SaveLivePhoto,
         ),
-      if (chat.isGroup && !message.isFromMe! && dmChat != null && !LifecycleSvc.isBubble)
+      if (chat.isGroup &&
+          !message.isFromMe! &&
+          dmChat != null &&
+          !LifecycleSvc.isBubble &&
+          widget.origin != MessagePopupOrigin.details)
         DetailsMenuActionWidget(
           onTap: () => popup_navigation_actions.openDm(_buildActionContext(DetailsMenuAction.OpenDirectMessage)),
           action: DetailsMenuAction.OpenDirectMessage,
@@ -640,7 +644,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
           onTap: () => popup_media_actions.redownload(_buildActionContext(DetailsMenuAction.ReDownloadFromServer)),
           action: DetailsMenuAction.ReDownloadFromServer,
         ),
-      if (!kIsWeb && !kIsDesktop)
+      if (!kIsWeb && !kIsDesktop && widget.origin != MessagePopupOrigin.details)
         DetailsMenuActionWidget(
           onTap: () => popup_message_actions.remindLater(_buildActionContext(DetailsMenuAction.RemindLater)),
           action: DetailsMenuAction.RemindLater,
@@ -649,7 +653,8 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
           !kIsDesktop &&
           !message.isFromMe! &&
           message.handleRelation.target != null &&
-          message.handleRelation.target!.contactsV2.isEmpty)
+          message.handleRelation.target!.contactsV2.isEmpty &&
+          widget.origin != MessagePopupOrigin.details)
         DetailsMenuActionWidget(
           onTap: () => popup_message_actions.createContact(_buildActionContext(DetailsMenuAction.CreateContact)),
           action: DetailsMenuAction.CreateContact,
@@ -657,7 +662,8 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
       if (SettingsSvc.serverDetails.isMinVentura &&
           message.isFromMe! &&
           !widget.controller.isSending.value &&
-          SettingsSvc.serverDetails.supportsEditAndUnsend)
+          SettingsSvc.serverDetails.supportsEditAndUnsend &&
+          widget.origin != MessagePopupOrigin.details)
         DetailsMenuActionWidget(
           onTap: () => popup_message_actions.unsend(_buildActionContext(DetailsMenuAction.UndoSend)),
           customTitle: canUnsend ? 'Undo Send' : 'Undo Send (too old)',
@@ -685,7 +691,11 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
           onTap: () => popup_navigation_actions.forward(_buildActionContext(DetailsMenuAction.Forward)),
           action: DetailsMenuAction.Forward,
         ),
-      if (chat.isGroup && !message.isFromMe! && dmChat == null && !LifecycleSvc.isBubble)
+      if (chat.isGroup &&
+          !message.isFromMe! &&
+          dmChat == null &&
+          !LifecycleSvc.isBubble &&
+          widget.origin != MessagePopupOrigin.details)
         DetailsMenuActionWidget(
           onTap: () => popup_navigation_actions.newConvo(_buildActionContext(DetailsMenuAction.StartConversation)),
           action: DetailsMenuAction.StartConversation,
