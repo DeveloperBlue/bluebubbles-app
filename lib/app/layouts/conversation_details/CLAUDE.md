@@ -34,6 +34,7 @@ of the iOS widgets below based on `SettingsSvc.settings.skin.value`. See
 **Shared Media**
 - `attachment_section_header.dart` — section label + "Show more" action
 - `media_gallery_card.dart` — tappable media card → opens `FullscreenMedia`
+- `details_message_popup_binder.dart` — long-press / right-click → message popup (`MessagePopupOrigin.details`)
 - `attachments_loader.dart` — attachment pagination and caching
 - `filters/media_filters_sheet.dart` — shared filters bottom sheet
 

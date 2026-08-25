@@ -4,6 +4,7 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/details_message_popup_binder.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/media_gallery_card.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/media/media_filter_selector.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -98,11 +99,46 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
     _loadingMore = false;
   }
 
+  void _onMessageDeleted(Message message) {
+    final guid = message.guid;
+    widget.media.removeWhere((a) {
+      final parent = a.message.target;
+      return parent != null && (identical(parent, message) || (guid != null && parent.guid == guid));
+    });
+    widget.selected.removeWhere((id) => !widget.media.any((a) => a.guid == id));
+    setState(() {});
+  }
+
   Widget _buildGridItem(BuildContext context, int index) {
     final attachment = _filteredMedia[index];
     return Obx(() {
       final isSelected = widget.selected.contains(attachment.guid);
       const motion = M3EMotion.spatialFast;
+      Widget card = MediaGalleryCard(attachment: attachment);
+      if (isSelected) {
+        card = Stack(
+          alignment: Alignment.center,
+          children: [
+            card,
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: context.theme.colorScheme.primary,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(5.0),
+                child: Icon(
+                  iOS ? CupertinoIcons.check_mark : Icons.check,
+                  color: context.theme.colorScheme.onPrimary,
+                  size: 18,
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
+      final inSelection = widget.selected.isNotEmpty;
       return AnimatedContainer(
         duration: motion.duration,
         curve: motion.curve,
@@ -111,50 +147,28 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
           borderRadius: BorderRadius.circular(isSelected ? M3EShapes.md : 20),
         ),
         clipBehavior: Clip.antiAlias,
-        child: GestureDetector(
-          onTap: widget.selected.isNotEmpty
-              ? () {
+        child: inSelection
+            ? GestureDetector(
+                onTap: () {
                   if (widget.selected.contains(attachment.guid)) {
                     widget.selected.remove(attachment.guid!);
                   } else {
                     widget.selected.add(attachment.guid!);
                   }
-                }
-              : null,
-          onLongPress: () {
-            if (widget.selected.contains(attachment.guid)) {
-              widget.selected.remove(attachment.guid!);
-            } else {
-              widget.selected.add(attachment.guid!);
-            }
-          },
-          child: AbsorbPointer(
-            absorbing: widget.selected.isNotEmpty,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                MediaGalleryCard(
-                  attachment: attachment,
+                },
+                child: AbsorbPointer(
+                  absorbing: true,
+                  child: card,
                 ),
-                if (isSelected)
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: context.theme.colorScheme.primary,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(5.0),
-                      child: Icon(
-                        iOS ? CupertinoIcons.check_mark : Icons.check,
-                        color: context.theme.colorScheme.onPrimary,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
+              )
+            : DetailsMessagePopupBinder(
+                chat: widget.chat,
+                attachment: attachment,
+                selected: widget.selected,
+                popAttachmentsRoute: widget.fullPage,
+                onMessageDeleted: _onMessageDeleted,
+                child: card,
+              ),
       );
     });
   }
