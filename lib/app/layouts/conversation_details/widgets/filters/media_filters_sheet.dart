@@ -84,11 +84,29 @@ void showAttachmentFiltersSheet(
                 ),
               );
 
-          Widget filterChip(String label, bool selected, ValueChanged<bool> onSelected) {
+          final isIOS = SettingsSvc.settings.skin.value == Skins.iOS;
+
+          Widget filterChip(
+            String label,
+            bool selected,
+            ValueChanged<bool> onSelected, {
+            required IconData iosIcon,
+            required IconData materialIcon,
+          }) {
             return BBChip(
               showCheckmark: true,
               selected: selected,
               checkmarkColor: primaryColor,
+              padding: const EdgeInsets.all(4),
+              avatar: CircleAvatar(
+                radius: 12,
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                child: Icon(
+                  isIOS ? iosIcon : materialIcon,
+                  color: primaryColor,
+                  size: 14,
+                ),
+              ),
               label: Text(label, style: labelStyle),
               onSelected: onSelected,
             );
@@ -211,12 +229,16 @@ void showAttachmentFiltersSheet(
                           MediaFilter.images.label,
                           currentFilters.mediaFilter == MediaFilter.images,
                           (selected) => updateFilters(type: selected ? MediaFilter.images : MediaFilter.all),
+                          iosIcon: CupertinoIcons.photo,
+                          materialIcon: Icons.photo_outlined,
                         ),
                       if (currentFilters.mediaFilter != MediaFilter.images)
                         filterChip(
                           "Videos",
                           currentFilters.mediaFilter == MediaFilter.videos,
                           (selected) => updateFilters(type: selected ? MediaFilter.videos : MediaFilter.all),
+                          iosIcon: CupertinoIcons.play_rectangle,
+                          materialIcon: Icons.smart_display_outlined,
                         ),
                     ]),
                     if (currentFilters.mediaFilter == MediaFilter.images)
@@ -228,6 +250,8 @@ void showAttachmentFiltersSheet(
                             (selected) => updateFilters(
                               photoSubfilter: selected ? PhotoSubfilter.livePhotos : PhotoSubfilter.all,
                             ),
+                            iosIcon: CupertinoIcons.play_circle_fill,
+                            materialIcon: Icons.play_circle_outline,
                           ),
                         if (currentFilters.photoSubfilter != PhotoSubfilter.livePhotos)
                           filterChip(
@@ -236,6 +260,8 @@ void showAttachmentFiltersSheet(
                             (selected) => updateFilters(
                               photoSubfilter: selected ? PhotoSubfilter.gifs : PhotoSubfilter.all,
                             ),
+                            iosIcon: CupertinoIcons.play_rectangle_fill,
+                            materialIcon: Icons.gif_box_outlined,
                           ),
                       ]),
                   ],
@@ -249,6 +275,8 @@ void showAttachmentFiltersSheet(
                           currentFilters.fileTypeFilter == FileTypeFilter.documents,
                           (selected) =>
                               updateFilters(fileType: selected ? FileTypeFilter.documents : FileTypeFilter.all),
+                          iosIcon: CupertinoIcons.doc_on_doc,
+                          materialIcon: Icons.article_outlined,
                         ),
                       if (currentFilters.fileTypeFilter != FileTypeFilter.documents &&
                           currentFilters.fileTypeFilter != FileTypeFilter.other)
@@ -256,6 +284,8 @@ void showAttachmentFiltersSheet(
                           "Audio",
                           currentFilters.fileTypeFilter == FileTypeFilter.audio,
                           (selected) => updateFilters(fileType: selected ? FileTypeFilter.audio : FileTypeFilter.all),
+                          iosIcon: CupertinoIcons.music_note,
+                          materialIcon: Icons.music_note,
                         ),
                       if (currentFilters.fileTypeFilter != FileTypeFilter.documents &&
                           currentFilters.fileTypeFilter != FileTypeFilter.audio)
@@ -263,6 +293,8 @@ void showAttachmentFiltersSheet(
                           "Other",
                           currentFilters.fileTypeFilter == FileTypeFilter.other,
                           (selected) => updateFilters(fileType: selected ? FileTypeFilter.other : FileTypeFilter.all),
+                          iosIcon: CupertinoIcons.doc,
+                          materialIcon: Icons.insert_drive_file_outlined,
                         ),
                     ]),
                   ],
