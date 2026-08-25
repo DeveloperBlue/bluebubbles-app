@@ -18,16 +18,27 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 | `actions/message_actions.dart` | Message lifecycle actions (edit/unsend/delete/bookmark/remind/info/etc.) |
 | `widgets/reaction_details.dart` | Reactions preview widget rendered at top of popup |
 
+## MessagePopupOrigin
+
+`conversation` (default) shows tapbacks, Material selection highlighting, and composer focus handling.
+`details` hides tapback chrome (picker, `ReactionDetails`, placeholder), wraps the overlay child in `IgnorePointer`, and skips composer/selection side effects.
+
+Action routing by origin:
+- Reply / Edit / View Thread call `dismissForThread()` (close popup, then `popToConversation` when origin is details).
+- Forward / Open DM / New conversation also `dismissForThread()` so they do not stack on ConversationDetails.
+- Select Multiple from details toggles `detailsSelected` GUIDs when that list is provided; the action is omitted when origin is details and `detailsSelected` is null.
+- Delete from details invokes `onMessageDeleted` after a successful delete and stays on details.
+
 ## MessagePopupActionContext Contract
 
 `MessagePopupActionContext` carries the data/dependencies needed by reusable action handlers:
-- UI context: `context`, `widthContext`, `popDetails`, `showSnack`
+- UI context: `context`, `widthContext`, `popDetails`, `showSnack`, `dismissForThread`
 - Message scope: `messageState`, `message`, `part`, `chat`, `service`
 - Controller scope: `cvController`
 - Capability flags: `serverDetails`, `isEmbeddedMedia`
 - Related entities: `dmChat`
 - Action metadata: `action`
-- Origin: `origin`
+- Origin: `origin`, `detailsSelected`, `detailsAttachmentGuid`, `popToConversation`, `onMessageDeleted`
 
 ## How It Works
 

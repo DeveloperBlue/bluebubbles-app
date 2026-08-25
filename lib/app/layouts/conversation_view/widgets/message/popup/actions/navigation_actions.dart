@@ -14,13 +14,13 @@ import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:flutter/widgets.dart';
 
 void reply(MessagePopupActionContext ctx) {
-  ctx.popDetails();
+  ctx.dismissForThread();
   ctx.cvController.replyToMessage = MessageReplyContext(ctx.message, ctx.part.part);
 }
 
 void openDm(MessagePopupActionContext ctx) {
   if (ctx.dmChat == null) return;
-  ctx.popDetails();
+  ctx.dismissForThread();
   Navigator.pushReplacement(
     ctx.context,
     cupertino.CupertinoPageRoute(
@@ -32,7 +32,7 @@ void openDm(MessagePopupActionContext ctx) {
 }
 
 void showThread(MessagePopupActionContext ctx) {
-  ctx.popDetails();
+  ctx.dismissForThread();
   if (ctx.message.threadOriginatorGuid != null) {
     final mwc = ctx.service.getMessageStateIfExists(ctx.message.threadOriginatorGuid!);
     if (mwc == null) return ctx.showSnack("Error", "Failed to find thread!");
@@ -46,7 +46,7 @@ void showThread(MessagePopupActionContext ctx) {
 void newConvo(MessagePopupActionContext ctx) {
   final Handle? handle = ctx.message.handleRelation.target;
   if (handle == null) return;
-  ctx.popDetails();
+  ctx.dismissForThread();
   // This route replacement bypasses ConversationView's back-handler, so
   // explicitly close the active controller first.
   ctx.cvController.close();
@@ -58,7 +58,7 @@ void newConvo(MessagePopupActionContext ctx) {
 }
 
 Future<void> forward(MessagePopupActionContext ctx) async {
-  ctx.popDetails();
+  ctx.dismissForThread();
   final List<PlatformFile> attachments = [];
   final _attachments = ctx.message.dbAttachments
       .where((e) => AttachmentsSvc.getContent(e, autoDownload: false) is PlatformFile)

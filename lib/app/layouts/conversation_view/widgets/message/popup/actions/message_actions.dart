@@ -56,7 +56,7 @@ Future<void> unsend(MessagePopupActionContext ctx) async {
 }
 
 void edit(MessagePopupActionContext ctx) {
-  ctx.popDetails();
+  ctx.dismissForThread();
   final FocusNode? node = kIsDesktop || kIsWeb ? FocusNode() : null;
   ctx.cvController.editing.add(
     MessageEditEntry(
@@ -69,10 +69,25 @@ void edit(MessagePopupActionContext ctx) {
 
 Future<void> delete(MessagePopupActionContext ctx) async {
   await ctx.service.deleteMessage(ctx.message);
+  if (ctx.origin == MessagePopupOrigin.details) {
+    ctx.onMessageDeleted?.call(ctx.message);
+  }
   ctx.popDetails();
 }
 
 void selectMultiple(MessagePopupActionContext ctx) {
+  final detailsSelected = ctx.detailsSelected;
+  final guid = ctx.detailsAttachmentGuid;
+  if (ctx.origin == MessagePopupOrigin.details && detailsSelected != null && guid != null) {
+    if (detailsSelected.contains(guid)) {
+      detailsSelected.remove(guid);
+    } else {
+      detailsSelected.add(guid);
+    }
+    ctx.popDetails(returnVal: false);
+    return;
+  }
+
   ctx.cvController.inSelectMode.toggle();
   if (SettingsSvc.settings.skin.value == Skins.iOS) {
     ctx.cvController.selected.add(ctx.message);

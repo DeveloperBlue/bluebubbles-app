@@ -48,6 +48,10 @@ class MessagePopup extends StatefulWidget {
   final Function([String? type, int? part]) sendTapback;
   final BuildContext? Function() widthContext;
   final MessagePopupOrigin origin;
+  final RxList<String>? detailsSelected;
+  final String? detailsAttachmentGuid;
+  final VoidCallback? popToConversation;
+  final ValueChanged<Message>? onMessageDeleted;
 
   const MessagePopup({
     super.key,
@@ -61,6 +65,10 @@ class MessagePopup extends StatefulWidget {
     required this.sendTapback,
     required this.widthContext,
     this.origin = MessagePopupOrigin.conversation,
+    this.detailsSelected,
+    this.detailsAttachmentGuid,
+    this.popToConversation,
+    this.onMessageDeleted,
   });
 
   @override
@@ -525,6 +533,10 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
       dmChat: dmChat,
       isEmbeddedMedia: isEmbeddedMedia,
       origin: widget.origin,
+      detailsSelected: widget.detailsSelected,
+      detailsAttachmentGuid: widget.detailsAttachmentGuid,
+      popToConversation: widget.popToConversation,
+      onMessageDeleted: widget.onMessageDeleted,
     );
   }
 
@@ -673,10 +685,11 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
         action: DetailsMenuAction.Bookmark,
         customTitle: message.isBookmarked ? "Remove Bookmark" : "Add Bookmark",
       ),
-      DetailsMenuActionWidget(
-        onTap: () => popup_message_actions.selectMultiple(_buildActionContext(DetailsMenuAction.SelectMultiple)),
-        action: DetailsMenuAction.SelectMultiple,
-      ),
+      if (widget.origin != MessagePopupOrigin.details || widget.detailsSelected != null)
+        DetailsMenuActionWidget(
+          onTap: () => popup_message_actions.selectMultiple(_buildActionContext(DetailsMenuAction.SelectMultiple)),
+          action: DetailsMenuAction.SelectMultiple,
+        ),
       DetailsMenuActionWidget(
         onTap: () => popup_message_actions.messageInfo(_buildActionContext(DetailsMenuAction.MessageInfo)),
         action: DetailsMenuAction.MessageInfo,

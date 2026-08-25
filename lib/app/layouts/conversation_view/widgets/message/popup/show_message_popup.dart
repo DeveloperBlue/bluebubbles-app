@@ -17,7 +17,8 @@ void _noopTapback([String? type, int? part]) {}
 /// this function subtracts view padding and the chat-list inset.
 ///
 /// [origin] controls Material selection highlighting, composer focus, overlay
-/// child pointer events, and whether tapback chrome is shown.
+/// child pointer events, tapback chrome, and action routing (see
+/// [MessagePopupActionContext.dismissForThread]).
 Future<dynamic> showMessagePopup({
   required BuildContext context,
   required Size size,
@@ -29,6 +30,10 @@ Future<dynamic> showMessagePopup({
   required BuildContext? Function() widthContext,
   Function([String? type, int? part])? sendTapback,
   MessagePopupOrigin origin = MessagePopupOrigin.conversation,
+  RxList<String>? detailsSelected,
+  String? detailsAttachmentGuid,
+  VoidCallback? popToConversation,
+  ValueChanged<Message>? onMessageDeleted,
 }) async {
   HapticFeedback.lightImpact();
 
@@ -99,6 +104,10 @@ Future<dynamic> showMessagePopup({
                   sendTapback: sendTapback ?? _noopTapback,
                   widthContext: widthContext,
                   origin: origin,
+                  detailsSelected: detailsSelected,
+                  detailsAttachmentGuid: detailsAttachmentGuid,
+                  popToConversation: popToConversation,
+                  onMessageDeleted: onMessageDeleted,
                   child: overlayChild,
                 ),
               ),

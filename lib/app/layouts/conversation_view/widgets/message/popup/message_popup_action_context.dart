@@ -4,9 +4,10 @@ import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/ui/chat/conversation_view_controller.dart';
 import 'package:bluebubbles/services/ui/message/messages_service.dart';
 import 'package:flutter/widgets.dart';
+import 'package:get/get.dart';
 
 /// Where the message popup was opened from. Controls tapback chrome, Material
-/// selection highlighting, and (later) origin-specific action routing.
+/// selection highlighting, and origin-specific action routing.
 enum MessagePopupOrigin {
   conversation,
   details,
@@ -41,6 +42,18 @@ class MessagePopupActionContext {
   final bool isEmbeddedMedia;
   final MessagePopupOrigin origin;
 
+  /// Details media multi-select. Null when the popup was not opened from a
+  /// section that supports GUID selection (or from the conversation).
+  final RxList<String>? detailsSelected;
+  final String? detailsAttachmentGuid;
+
+  /// Pops ConversationAttachments (if present) then ConversationDetails.
+  /// The binder must capture the details [Navigator] before the popup is pushed;
+  /// do not use [context] after [popDetails].
+  final VoidCallback? popToConversation;
+
+  final ValueChanged<Message>? onMessageDeleted;
+
   const MessagePopupActionContext({
     required this.context,
     required this.widthContext,
@@ -57,5 +70,17 @@ class MessagePopupActionContext {
     required this.dmChat,
     required this.isEmbeddedMedia,
     this.origin = MessagePopupOrigin.conversation,
+    this.detailsSelected,
+    this.detailsAttachmentGuid,
+    this.popToConversation,
+    this.onMessageDeleted,
   });
+
+  /// Closes the popup, then returns to the conversation when opened from details.
+  void dismissForThread({bool returnVal = true}) {
+    popDetails(returnVal: returnVal);
+    if (origin == MessagePopupOrigin.details) {
+      popToConversation?.call();
+    }
+  }
 }
