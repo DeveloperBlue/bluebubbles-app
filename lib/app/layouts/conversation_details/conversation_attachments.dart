@@ -86,6 +86,8 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
         photoSubfilter: filter == MediaFilter.images ? _filters.photoSubfilter : PhotoSubfilter.all,
       ));
 
+  void _clearFilters() => _onFiltersChanged(const AttachmentFiltersState());
+
   @override
   void initState() {
     super.initState();
@@ -173,6 +175,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             sinceDate: _filters.sinceDate,
             bookmarkedOnly: _filters.bookmarkedOnly,
             onMediaFilterChanged: _onMediaFilterChanged,
+            onClearFilters: _clearFilters,
           ),
         ];
       case AttachmentSectionType.links:
@@ -183,6 +186,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             senderFilter: _filters.senderFilter,
             sinceDate: _filters.sinceDate,
             bookmarkedOnly: _filters.bookmarkedOnly,
+            onClearFilters: _clearFilters,
           ),
         ];
       case AttachmentSectionType.locations:
@@ -193,6 +197,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             isLoading: isLoadingAttachments,
             fullPage: true,
             filters: _filters,
+            onClearFilters: _clearFilters,
           ),
         ];
       case AttachmentSectionType.documents:
@@ -203,6 +208,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             isLoading: isLoadingAttachments,
             fullPage: true,
             filters: _filters,
+            onClearFilters: _clearFilters,
           ),
         ];
     }

@@ -4,6 +4,7 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/media_gallery_card.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/media/media_filter_selector.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -27,6 +28,7 @@ class MediaGridSection extends StatefulWidget {
   final DateTime? sinceDate;
   final bool bookmarkedOnly;
   final ValueChanged<MediaFilter>? onMediaFilterChanged;
+  final VoidCallback? onClearFilters;
 
   const MediaGridSection({
     super.key,
@@ -42,6 +44,7 @@ class MediaGridSection extends StatefulWidget {
     this.sinceDate,
     this.bookmarkedOnly = false,
     this.onMediaFilterChanged,
+    this.onClearFilters,
   });
 
   @override
@@ -219,21 +222,9 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
         )
       else if (_filteredMedia.isEmpty)
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 20.0),
-            child: Center(
-              child: Text(
-                widget.fullPage
-                    ? (widget.mediaFilter == MediaFilter.images && widget.photoSubfilter != PhotoSubfilter.all
-                        ? widget.photoSubfilter.emptyMessage
-                        : widget.mediaFilter.emptyMessage)
-                    : "No photos or videos",
-                style: context.theme.textTheme.bodyMedium!.copyWith(
-                  color: context.theme.colorScheme.outline,
-                ),
-              ),
-            ),
-          ),
+          child: widget.fullPage && widget.media.isNotEmpty && widget.onClearFilters != null
+              ? AttachmentSectionEmpty.noFilterResults(onClearFilters: widget.onClearFilters!)
+              : const AttachmentSectionEmpty(message: "No photos or videos"),
         )
       else ...[
         SliverPadding(

@@ -52,17 +52,6 @@ extension MediaFilterLabels on MediaFilter {
         return "Videos";
     }
   }
-
-  String get emptyMessage {
-    switch (this) {
-      case MediaFilter.all:
-        return "No photos or videos";
-      case MediaFilter.images:
-        return "No photos";
-      case MediaFilter.videos:
-        return "No videos";
-    }
-  }
 }
 
 /// Photo-only subfilters shown when [MediaFilter.images] is selected.
@@ -81,17 +70,6 @@ extension PhotoSubfilterLabels on PhotoSubfilter {
         return "Live Photos";
       case PhotoSubfilter.gifs:
         return "GIFs";
-    }
-  }
-
-  String get emptyMessage {
-    switch (this) {
-      case PhotoSubfilter.all:
-        return "No photos";
-      case PhotoSubfilter.livePhotos:
-        return "No live photos";
-      case PhotoSubfilter.gifs:
-        return "No GIFs";
     }
   }
 }

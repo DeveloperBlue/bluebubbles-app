@@ -4,6 +4,7 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/links/links_search_helper.dart';
 import 'package:bluebubbles/app/layouts/conversation_list/pages/search/conversation_search_field.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/interactive/url_preview.dart';
@@ -24,6 +25,7 @@ class LinksSection extends StatefulWidget {
   final MediaSenderFilter senderFilter;
   final DateTime? sinceDate;
   final bool bookmarkedOnly;
+  final VoidCallback? onClearFilters;
 
   const LinksSection({
     super.key,
@@ -32,6 +34,7 @@ class LinksSection extends StatefulWidget {
     this.senderFilter = const MediaSenderFilter.any(),
     this.sinceDate,
     this.bookmarkedOnly = false,
+    this.onClearFilters,
   });
 
   @override
@@ -207,17 +210,11 @@ class _LinksSectionState extends State<LinksSection> with ThemeHelpers {
           )
         else if (_displayedLinks.isEmpty)
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 20.0),
-              child: Center(
-                child: Text(
-                  links.isEmpty ? "No links" : "No matching links",
-                  style: context.theme.textTheme.bodyMedium!.copyWith(
-                    color: context.theme.colorScheme.outline,
+            child: widget.fullPage && links.isNotEmpty && _filteredLinks.isEmpty && widget.onClearFilters != null
+                ? AttachmentSectionEmpty.noFilterResults(onClearFilters: widget.onClearFilters!)
+                : AttachmentSectionEmpty(
+                    message: links.isEmpty ? "No links" : "No matching links",
                   ),
-                ),
-              ),
-            ),
           )
         else ...[
           SliverPadding(
