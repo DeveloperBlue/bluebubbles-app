@@ -48,6 +48,7 @@ class _LocationsSectionState extends State<LocationsSection> {
       typeFilter: FileTypeFilter.all,
       senderFilter: widget.filters.senderFilter,
       sinceDate: widget.filters.sinceDate,
+      bookmarkedOnly: widget.filters.bookmarkedOnly,
     );
   }
 

@@ -48,6 +48,7 @@ void showAttachmentFiltersSheet(
             MediaSenderFilter? sender,
             DateTime? date,
             bool clearDate = false,
+            bool? bookmarkedOnly,
           }) {
             currentFilters = currentFilters.copyWith(
               mediaFilter: type,
@@ -55,6 +56,7 @@ void showAttachmentFiltersSheet(
               senderFilter: sender,
               sinceDate: date,
               clearSinceDate: clearDate,
+              bookmarkedOnly: bookmarkedOnly,
             );
             onChanged(currentFilters);
             setSheetState(() {});
@@ -123,9 +125,16 @@ void showAttachmentFiltersSheet(
                         ),
                       ),
                       IconButton(
-                        tooltip: "Save as Default",
-                        icon: const Icon(Icons.bookmark_outline),
-                        onPressed: () {},
+                        tooltip: currentFilters.bookmarkedOnly ? "Show All" : "Bookmarked Only",
+                        isSelected: currentFilters.bookmarkedOnly,
+                        icon: Icon(SettingsSvc.settings.skin.value == Skins.iOS
+                            ? CupertinoIcons.bookmark
+                            : Icons.bookmark_outline),
+                        selectedIcon: Icon(SettingsSvc.settings.skin.value == Skins.iOS
+                            ? CupertinoIcons.bookmark_fill
+                            : Icons.bookmark),
+                        color: currentFilters.bookmarkedOnly ? primaryColor : null,
+                        onPressed: () => updateFilters(bookmarkedOnly: !currentFilters.bookmarkedOnly),
                       ),
                     ],
                   ),

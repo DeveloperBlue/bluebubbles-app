@@ -24,6 +24,7 @@ class MediaGridSection extends StatefulWidget {
   final MediaFilter mediaFilter;
   final MediaSenderFilter senderFilter;
   final DateTime? sinceDate;
+  final bool bookmarkedOnly;
   final ValueChanged<MediaFilter>? onMediaFilterChanged;
 
   const MediaGridSection({
@@ -37,6 +38,7 @@ class MediaGridSection extends StatefulWidget {
     this.mediaFilter = MediaFilter.all,
     this.senderFilter = const MediaSenderFilter.any(),
     this.sinceDate,
+    this.bookmarkedOnly = false,
     this.onMediaFilterChanged,
   });
 
@@ -54,6 +56,7 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
         typeFilter: widget.mediaFilter,
         senderFilter: widget.senderFilter,
         sinceDate: widget.sinceDate,
+        bookmarkedOnly: widget.bookmarkedOnly,
       );
 
   @override
@@ -75,6 +78,9 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
       _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
     }
     if (oldWidget.sinceDate != widget.sinceDate) {
+      _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
+    }
+    if (oldWidget.bookmarkedOnly != widget.bookmarkedOnly) {
       _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
     }
   }

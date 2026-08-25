@@ -129,10 +129,15 @@ bool attachmentMatchesSenderFilter(Attachment attachment, MediaSenderFilter filt
   return messageMatchesSenderFilter(message, filter);
 }
 
+bool attachmentMatchesBookmarkedFilter(Attachment attachment) {
+  return attachment.message.target?.isBookmarked == true;
+}
+
 List<Message> applyMessageFilters(
   List<Message> messages, {
   required MediaSenderFilter senderFilter,
   DateTime? sinceDate,
+  bool bookmarkedOnly = false,
 }) {
   var result = messages;
   if (senderFilter.isActive) {
@@ -145,6 +150,9 @@ List<Message> applyMessageFilters(
       return !created.isBefore(sinceDate);
     }).toList();
   }
+  if (bookmarkedOnly) {
+    result = result.where((e) => e.isBookmarked).toList();
+  }
   return result;
 }
 
@@ -153,6 +161,7 @@ List<Attachment> applyMediaFilters(
   required MediaFilter typeFilter,
   required MediaSenderFilter senderFilter,
   DateTime? sinceDate,
+  bool bookmarkedOnly = false,
 }) {
   var result = filterMedia(media, typeFilter);
   if (senderFilter.isActive) {
@@ -164,6 +173,9 @@ List<Attachment> applyMediaFilters(
       if (created == null) return false;
       return !created.isBefore(sinceDate);
     }).toList();
+  }
+  if (bookmarkedOnly) {
+    result = result.where(attachmentMatchesBookmarkedFilter).toList();
   }
   return result;
 }
@@ -188,12 +200,14 @@ class AttachmentFiltersState {
   final FileTypeFilter fileTypeFilter;
   final MediaSenderFilter senderFilter;
   final DateTime? sinceDate;
+  final bool bookmarkedOnly;
 
   const AttachmentFiltersState({
     this.mediaFilter = MediaFilter.all,
     this.fileTypeFilter = FileTypeFilter.all,
     this.senderFilter = const MediaSenderFilter.any(),
     this.sinceDate,
+    this.bookmarkedOnly = false,
   });
 
   AttachmentFiltersState copyWith({
@@ -202,23 +216,25 @@ class AttachmentFiltersState {
     MediaSenderFilter? senderFilter,
     DateTime? sinceDate,
     bool clearSinceDate = false,
+    bool? bookmarkedOnly,
   }) {
     return AttachmentFiltersState(
       mediaFilter: mediaFilter ?? this.mediaFilter,
       fileTypeFilter: fileTypeFilter ?? this.fileTypeFilter,
       senderFilter: senderFilter ?? this.senderFilter,
       sinceDate: clearSinceDate ? null : (sinceDate ?? this.sinceDate),
+      bookmarkedOnly: bookmarkedOnly ?? this.bookmarkedOnly,
     );
   }
 
   bool hasActiveFilter(AttachmentFiltersTypeSection typeSection) {
     switch (typeSection) {
       case AttachmentFiltersTypeSection.media:
-        return mediaFilter != MediaFilter.all || senderFilter.isActive || sinceDate != null;
+        return mediaFilter != MediaFilter.all || senderFilter.isActive || sinceDate != null || bookmarkedOnly;
       case AttachmentFiltersTypeSection.files:
-        return fileTypeFilter != FileTypeFilter.all || senderFilter.isActive || sinceDate != null;
+        return fileTypeFilter != FileTypeFilter.all || senderFilter.isActive || sinceDate != null || bookmarkedOnly;
       case AttachmentFiltersTypeSection.none:
-        return senderFilter.isActive || sinceDate != null;
+        return senderFilter.isActive || sinceDate != null || bookmarkedOnly;
     }
   }
 
@@ -229,11 +245,12 @@ class AttachmentFiltersState {
         other.mediaFilter == mediaFilter &&
         other.fileTypeFilter == fileTypeFilter &&
         other.senderFilter == senderFilter &&
-        other.sinceDate == sinceDate;
+        other.sinceDate == sinceDate &&
+        other.bookmarkedOnly == bookmarkedOnly;
   }
 
   @override
-  int get hashCode => Object.hash(mediaFilter, fileTypeFilter, senderFilter, sinceDate);
+  int get hashCode => Object.hash(mediaFilter, fileTypeFilter, senderFilter, sinceDate, bookmarkedOnly);
 }
 
 FileTypeFilter classifyFileAttachment(Attachment attachment) {
@@ -270,6 +287,7 @@ List<Attachment> applyFileFilters(
   required FileTypeFilter typeFilter,
   required MediaSenderFilter senderFilter,
   DateTime? sinceDate,
+  bool bookmarkedOnly = false,
 }) {
   var result = filterFilesByType(files, typeFilter);
   if (senderFilter.isActive) {
@@ -281,6 +299,9 @@ List<Attachment> applyFileFilters(
       if (created == null) return false;
       return !created.isBefore(sinceDate);
     }).toList();
+  }
+  if (bookmarkedOnly) {
+    result = result.where(attachmentMatchesBookmarkedFilter).toList();
   }
   return result;
 }

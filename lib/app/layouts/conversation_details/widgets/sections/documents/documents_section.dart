@@ -50,6 +50,7 @@ class _DocumentsSectionState extends State<DocumentsSection> with ThemeHelpers {
       typeFilter: widget.filters.fileTypeFilter,
       senderFilter: widget.filters.senderFilter,
       sinceDate: widget.filters.sinceDate,
+      bookmarkedOnly: widget.filters.bookmarkedOnly,
     );
   }
 

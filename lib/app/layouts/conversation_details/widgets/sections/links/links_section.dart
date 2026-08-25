@@ -23,6 +23,7 @@ class LinksSection extends StatefulWidget {
   final bool fullPage;
   final MediaSenderFilter senderFilter;
   final DateTime? sinceDate;
+  final bool bookmarkedOnly;
 
   const LinksSection({
     super.key,
@@ -30,6 +31,7 @@ class LinksSection extends StatefulWidget {
     this.fullPage = false,
     this.senderFilter = const MediaSenderFilter.any(),
     this.sinceDate,
+    this.bookmarkedOnly = false,
   });
 
   @override
@@ -50,6 +52,7 @@ class _LinksSectionState extends State<LinksSection> with ThemeHelpers {
       links,
       senderFilter: widget.senderFilter,
       sinceDate: widget.sinceDate,
+      bookmarkedOnly: widget.bookmarkedOnly,
     );
   }
 
@@ -83,7 +86,8 @@ class _LinksSectionState extends State<LinksSection> with ThemeHelpers {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fullPage != widget.fullPage ||
         oldWidget.senderFilter != widget.senderFilter ||
-        oldWidget.sinceDate != widget.sinceDate) {
+        oldWidget.sinceDate != widget.sinceDate ||
+        oldWidget.bookmarkedOnly != widget.bookmarkedOnly) {
       _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
     }
   }

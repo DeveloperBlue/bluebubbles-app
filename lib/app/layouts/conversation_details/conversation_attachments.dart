@@ -73,6 +73,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
           typeFilter: filters.mediaFilter,
           senderFilter: filters.senderFilter,
           sinceDate: filters.sinceDate,
+          bookmarkedOnly: filters.bookmarkedOnly,
         );
         selected.removeWhere((guid) => !filtered.any((e) => e.guid != null && e.guid == guid));
       }
@@ -165,6 +166,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             mediaFilter: _filters.mediaFilter,
             senderFilter: _filters.senderFilter,
             sinceDate: _filters.sinceDate,
+            bookmarkedOnly: _filters.bookmarkedOnly,
             onMediaFilterChanged: _onMediaFilterChanged,
           ),
         ];
@@ -175,6 +177,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             fullPage: true,
             senderFilter: _filters.senderFilter,
             sinceDate: _filters.sinceDate,
+            bookmarkedOnly: _filters.bookmarkedOnly,
           ),
         ];
       case AttachmentSectionType.locations:
