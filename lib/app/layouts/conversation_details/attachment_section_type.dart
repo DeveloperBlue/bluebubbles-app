@@ -401,7 +401,7 @@ extension AttachmentSectionTypeLabels on AttachmentSectionType {
   String get expressiveSectionLabel {
     switch (this) {
       case AttachmentSectionType.media:
-        return "Photos & videos";
+        return "Photos & Videos";
       case AttachmentSectionType.links:
         return "Links";
       case AttachmentSectionType.locations:
