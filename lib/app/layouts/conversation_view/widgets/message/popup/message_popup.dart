@@ -196,6 +196,20 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
     Navigator.of(context).pop(returnVal);
   }
 
+  /// Menu width used by the iOS action sheet. Capped so it can sit fully on the overlay.
+  double _detailsMenuWidth(double overlayWidth) {
+    final paneWidth = NavigationSvc.width(widthContext);
+    final preferred = min(max(paneWidth * 3 / 5, 200.0), paneWidth * 4 / 5);
+    return min(preferred, max(0.0, overlayWidth - 30));
+  }
+
+  /// Keep [preferredLeft] on-screen given [width] in an overlay of [overlayWidth].
+  double _clampedLeft(double preferredLeft, double width, double overlayWidth, {double padding = 15}) {
+    final maxLeft = overlayWidth - padding - width;
+    if (maxLeft <= padding) return padding;
+    return preferredLeft.clamp(padding, maxLeft).toDouble();
+  }
+
   @override
   Widget build(BuildContext context) {
     // Decide whether the tapback row needs to wrap to a second line by comparing its actual
@@ -203,6 +217,12 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
     // real horizontal space available at the picker's anchor position, rather than guessing from
     // overall screen width. widget.childPosition.dx already reflects any avatar space the bubble
     // was pushed past, so no avatar/group special-casing is needed here.
+    final overlayWidth = MediaQuery.sizeOf(context).width;
+    final menuWidth = _detailsMenuWidth(overlayWidth);
+    final preferredMenuLeft = message.isFromMe! ? overlayWidth - 15 - menuWidth : widget.childPosition.dx + 10;
+    final menuLeft = _clampedLeft(preferredMenuLeft, menuWidth, overlayWidth);
+    final childLeft = _clampedLeft(widget.childPosition.dx, widget.size.width, overlayWidth, padding: 0);
+
     bool narrowScreen = false;
     if (showTapbacks) {
       final double screenWidth = NavigationSvc.width(widthContext);
@@ -291,7 +311,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                     AnimatedPositioned(
                       duration: const Duration(milliseconds: 250),
                       curve: Curves.easeOutBack,
-                      left: widget.childPosition.dx,
+                      left: childLeft,
                       bottom: messageOffset,
                       child: TweenAnimationBuilder<double>(
                         tween: Tween<double>(begin: 0.8, end: 1),
@@ -462,8 +482,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                     ),
                   if (iOS)
                     Positioned(
-                      right: message.isFromMe! ? 15 : null,
-                      left: !message.isFromMe! ? widget.childPosition.dx + 10 : null,
+                      left: menuLeft,
                       bottom: 30,
                       child: TweenAnimationBuilder<double>(
                         tween: Tween<double>(begin: 0.8, end: 1),
@@ -479,7 +498,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const SizedBox(height: 5),
-                              buildDetailsMenu(context),
+                              buildDetailsMenu(context, menuWidth),
                             ],
                           ),
                         ),
@@ -704,10 +723,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
         .compareTo(SettingsSvc.settings.detailsMenuActions.indexOf(b.action)));
   }
 
-  Widget buildDetailsMenu(BuildContext context) {
-    double maxMenuWidth =
-        min(max(NavigationSvc.width(widthContext) * 3 / 5, 200), NavigationSvc.width(widthContext) * 4 / 5);
-
+  Widget buildDetailsMenu(BuildContext context, double menuWidth) {
     List<DetailsMenuActionWidget> allActions = _allActions;
 
     return ClipRRect(
@@ -716,7 +732,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Container(
           color: context.theme.colorScheme.surfaceContainerHighest.withAlpha(150),
-          width: maxMenuWidth,
+          width: menuWidth,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
