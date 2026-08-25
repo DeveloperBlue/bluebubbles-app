@@ -134,7 +134,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             initialHeader: null,
             iosSubtitle: iosSubtitle,
             materialSubtitle: materialSubtitle,
-            actions: _buildAppBarActions(context, chatDetailTheme.tileColor),
+            actions: _buildAppBarActions(context),
             bodySlivers: [
               if (isLoadingAttachments)
                 SliverToBoxAdapter(
@@ -200,7 +200,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
     }
   }
 
-  List<Widget> _buildAppBarActions(BuildContext context, Color scaffoldTileColor) {
+  List<Widget> _buildAppBarActions(BuildContext context) {
     switch (widget.section) {
       case AttachmentSectionType.media:
         return [
@@ -210,7 +210,6 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             onPressed: () => showAttachmentFiltersSheet(
               context,
               chat: widget.chat,
-              tileColor: scaffoldTileColor,
               filters: _filters,
               onChanged: _onFiltersChanged,
               typeSection: AttachmentFiltersTypeSection.media,
@@ -252,7 +251,6 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             onPressed: () => showAttachmentFiltersSheet(
               context,
               chat: widget.chat,
-              tileColor: scaffoldTileColor,
               filters: _filters,
               onChanged: _onFiltersChanged,
               typeSection: AttachmentFiltersTypeSection.none,
@@ -267,7 +265,6 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             onPressed: () => showAttachmentFiltersSheet(
               context,
               chat: widget.chat,
-              tileColor: scaffoldTileColor,
               filters: _filters,
               onChanged: _onFiltersChanged,
               typeSection: AttachmentFiltersTypeSection.files,
@@ -282,7 +279,6 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             onPressed: () => showAttachmentFiltersSheet(
               context,
               chat: widget.chat,
-              tileColor: scaffoldTileColor,
               filters: _filters,
               onChanged: _onFiltersChanged,
               typeSection: AttachmentFiltersTypeSection.none,
