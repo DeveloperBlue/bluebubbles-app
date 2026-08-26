@@ -22,7 +22,12 @@ rm -rf build/linux/*/release/bundle
 $FLUTTER_CMD pub get --enforce-lockfile
 # --no-pub: reuse the lockfile-enforced resolution above (build otherwise re-runs
 # pub get without --enforce-lockfile).
-$FLUTTER_CMD build linux --release -v --no-pub
+# Canary CI sets BUILD_NAME / BUILD_NUMBER so the in-app version is <bb>+<n>
+# without rewriting pubspec.yaml. Official builds leave both unset.
+extra=()
+if [ -n "${BUILD_NAME:-}" ]; then extra+=(--build-name="$BUILD_NAME"); fi
+if [ -n "${BUILD_NUMBER:-}" ]; then extra+=(--build-number="$BUILD_NUMBER"); fi
+$FLUTTER_CMD build linux --release -v --no-pub "${extra[@]}"
 
 arch=$(uname -m)
 if [[ $arch == "x86_64" ]]; then
@@ -31,10 +36,16 @@ elif [[ $arch == "aarch64" ]]; then
     folder="arm64"
 fi
 
-# Inject version number into version.json
+# Inject version number into version.json. Official bump_desktop_versions.dart
+# rewrites the hardcoded jq default below — keep that literal for the unset path.
 tmp=$(mktemp)
 chmod 644 "$tmp"
-jq '.version = "2.1.1.0"' build/linux/$folder/release/bundle/data/flutter_assets/version.json > "$tmp" && mv "$tmp" build/linux/$folder/release/bundle/data/flutter_assets/version.json
+if [ -n "${BUILD_NAME:-}" ]; then
+  jq --arg v "$BUILD_NAME" '.version = $v' build/linux/$folder/release/bundle/data/flutter_assets/version.json > "$tmp"
+else
+  jq '.version = "2.1.1.0"' build/linux/$folder/release/bundle/data/flutter_assets/version.json > "$tmp"
+fi
+mv "$tmp" build/linux/$folder/release/bundle/data/flutter_assets/version.json
 chmod +x build/linux/$folder/release/bundle/bluebubbles
 
 tar czvf bluebubbles-linux-"$arch".tar.gz -C build/linux/$folder/release/bundle .

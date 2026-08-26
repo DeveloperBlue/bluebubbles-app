@@ -61,7 +61,11 @@ bool get isSideloadMsix => isMsix && !isStoreMsix;
 String get appVersion {
   final info = FilesystemSvc.packageInfo;
   final code = info.buildNumber;
-  final build = Platform.isAndroid ? "+${code.length > 4 ? code.substring(code.length - 4) : code}" : "";
+  // Canary CI sets --build-name to "<bb>+<n>" (e.g. 2.1.1+3). Official Android still
+  // appends the last 4 digits of versionCode when the name has no '+' of its own.
+  final build = !info.version.contains('+') && Platform.isAndroid
+      ? "+${code.length > 4 ? code.substring(code.length - 4) : code}"
+      : "";
   final distribution = isSnap
       ? "_Snap"
       : isFlatpak

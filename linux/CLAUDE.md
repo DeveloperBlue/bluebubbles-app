@@ -2,6 +2,11 @@
 
 C++ code: `main.cc` + `my_application.cc/h` — standard GTK-based Flutter app wrapper. `splash_screen.cc/h` — native splash screen shown before the Flutter engine attaches.
 
+## Build
+`linux/build.sh` produces `bluebubbles-linux-<arch>.tar.gz` from the Flutter bundle. Optional env:
+- `BUILD_NAME` / `BUILD_NUMBER` — passed through to `flutter build` and written into `version.json` (canary CI). Unset keeps the official hardcoded desktop version.
+- `FLUTTER_CMD` — skip `fvm use` and call this instead (CI sets `fvm flutter`).
+
 ## Distribution Packages (project root)
 - `flatpak/` — Flatpak package (`app.bluebubbles.BlueBubbles`)
 - `snap/` — Snap package (`snapcraft.yaml`); core24 base, amd64/arm64, GNOME extension

@@ -1,0 +1,566 @@
+name: Canary Distribution
+
+# Manual-only canary builds for personal distribution. Does not run on push.
+#
+# Artifacts (no Play bundle, no MSIX, no SignPath):
+#   * Android canary APK (com.bluebubbles.messaging.canary, next to the store app)
+#   * Windows Inno installer (.exe)
+#   * Linux x86_64 and aarch64 tarballs
+#
+# Versioning: pubspec.yaml stays at BlueBubbles' value (e.g. 2.1.1+91). CI injects
+# --build-name=<bb>+<n> so the app shows 2.1.1+3, and --build-number=<bb>*1000+n so
+# Android versionCode stays above official builds. Tag is v<bb>+<bb_build>-canary.<n>
+# (e.g. v2.1.1+91-canary.3), official version plus canary number. Created with
+# GITHUB_TOKEN, so android-builds / desktop-builds do not start from this release.
+#
+# Extra release description (your notes, changelog, links):
+#   edit .github/canary-release-notes.md on developerblue/canary.
+#
+# GitHub still shows a branch picker; it defaults to this repo's default branch
+# (developerblue/canary). Leave it there. The YAML that *runs* is the copy on
+# the branch you pick. Source checkouts use CANARY_REF, or inputs.at-commit when set.
+
+on:
+  workflow_dispatch:
+    inputs:
+      canary:
+        description: "Canary number n. App version becomes <BlueBubbles>+n (e.g. 2.1.1+3)."
+        required: true
+        type: string
+      at-commit:
+        description: "Optional SHA on developerblue/canary. Build that commit and its ancestors only. Empty = branch tip."
+        required: false
+        type: string
+      create_release:
+        description: "Create a GitHub prerelease (tag v<BlueBubbles>+<build>-canary.n) and attach the artifacts"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.44.6"
+  FVM_VERSION: "4.1.2"
+  ANDROID_NDK_VERSION: "28.2.13676358"
+  ANDROID_COMPILE_SDK: "36"
+  JAVA_VERSION: "21"
+  # Git range base for the merge list only (git log upstream/master..HEAD).
+  # Release text is never read from this repo — that comes from this checkout
+  # and .github/canary-release-notes.md.
+  UPSTREAM_REPO: BlueBubblesApp/bluebubbles-app
+  # Only list merges of these branches / this GitHub user (not joel/, BlueBubblesApp/, etc).
+  # Stacked branches whose tips are ancestors of a listed merge are appended as extra bullets.
+  CANARY_BRANCH_PREFIX: developerblue/
+  CANARY_GITHUB_USER: DeveloperBlue
+  CANARY_REF: developerblue/canary
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      bb_name: ${{ steps.resolve.outputs.bb_name }}
+      bb_build: ${{ steps.resolve.outputs.bb_build }}
+      canary: ${{ steps.resolve.outputs.canary }}
+      build_name: ${{ steps.resolve.outputs.build_name }}
+      build_number: ${{ steps.resolve.outputs.build_number }}
+      iss_version: ${{ steps.resolve.outputs.iss_version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      asset_prefix: ${{ steps.resolve.outputs.asset_prefix }}
+      source_ref: ${{ steps.resolve.outputs.source_ref }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.CANARY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve versions
+        id: resolve
+        env:
+          CANARY: ${{ inputs.canary }}
+          AT_COMMIT: ${{ inputs.at-commit }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$CANARY" =~ ^[1-9][0-9]{0,2}$ ]]; then
+            echo "::error::canary must be an integer from 1 to 999 (got '$CANARY')"
+            exit 1
+          fi
+
+          source_ref=$(git rev-parse HEAD)
+          at="${AT_COMMIT//[[:space:]]/}"
+          if [[ -n "$at" ]]; then
+            if ! [[ "$at" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+              echo "::error::at-commit must be a git SHA (got '$AT_COMMIT')"
+              exit 1
+            fi
+            if ! git cat-file -e "${at}^{commit}" 2>/dev/null; then
+              echo "::error::at-commit '$at' is not a commit in this repository"
+              exit 1
+            fi
+            resolved=$(git rev-parse --verify "${at}^{commit}")
+            if ! git merge-base --is-ancestor "$resolved" HEAD; then
+              echo "::error::at-commit $resolved is not on ${CANARY_REF} (must be that tip or an ancestor of it)"
+              exit 1
+            fi
+            git checkout --detach "$resolved"
+            source_ref=$resolved
+          fi
+
+          line=$(grep -E '^version:' pubspec.yaml | head -n1 | tr -d '[:space:]')
+          spec=${line#version:}
+          bb_name=${spec%%+*}
+          bb_build=${spec##*+}
+          if ! [[ "$bb_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! [[ "$bb_build" =~ ^[0-9]+$ ]]; then
+            echo "::error::could not parse pubspec version '$spec'"
+            exit 1
+          fi
+
+          build_name="${bb_name}+${CANARY}"
+          build_number=$(( bb_build * 1000 + CANARY ))
+          {
+            echo "bb_name=$bb_name"
+            echo "bb_build=$bb_build"
+            echo "canary=$CANARY"
+            echo "build_name=$build_name"
+            echo "build_number=$build_number"
+            echo "iss_version=${bb_name}.${CANARY}"
+            echo "tag=v${bb_name}+${bb_build}-canary.${CANARY}"
+            echo "asset_prefix=bluebubbles-${bb_name}-canary.${CANARY}"
+            echo "source_ref=$source_ref"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Canary version"
+            echo ""
+            echo "- BlueBubbles: \`$bb_name+$bb_build\`"
+            echo "- Display (\`--build-name\`): \`$build_name\`"
+            echo "- Native (\`--build-number\`): \`$build_number\`"
+            echo "- Tag: \`v${bb_name}+${bb_build}-canary.${CANARY}\`"
+            echo "- Source: \`$source_ref\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  android:
+    needs: version
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.version.outputs.source_ref }}
+          persist-credentials: false
+
+      - name: Setup Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null
+          "$sdkmanager" --install \
+            "platforms;android-${ANDROID_COMPILE_SDK}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Pub get
+        run: flutter pub get --enforce-lockfile
+
+      - name: Write .env
+        run: 'echo "KLIPY_API_KEY=" > .env'
+
+      - name: Write signing config
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set. APK will be debug-signed (fine for personal sideload)."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keystore="$RUNNER_TEMP/release-keystore.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+
+          esc() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
+          {
+            echo "storeFile=$(esc "$keystore")"
+            echo "storePassword=$(esc "$KEYSTORE_PASSWORD")"
+            echo "keyAlias=$(esc "$KEY_ALIAS")"
+            echo "keyPassword=$(esc "$KEY_PASSWORD")"
+          } > android/key.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build APK (canary)
+        env:
+          BB_REQUIRE_RELEASE_SIGNING: ${{ steps.signing.outputs.signed == 'true' && 'true' || '' }}
+        run: |
+          flutter build apk --release --flavor canary --no-pub \
+            --build-name="${{ needs.version.outputs.build_name }}" \
+            --build-number="${{ needs.version.outputs.build_number }}"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          rm -f android/key.properties "$RUNNER_TEMP/release-keystore.jks"
+
+      - name: Collect artifact
+        run: |
+          mapfile -t found < <(find build/app/outputs/flutter-apk -type f -name "*.apk")
+          if [ "${#found[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .apk under build/app/outputs/flutter-apk, found ${#found[@]}: ${found[*]}"
+            find build/app/outputs -type f -name '*.apk' || true
+            exit 1
+          fi
+          mkdir -p out
+          filename="${{ needs.version.outputs.asset_prefix }}-android.apk"
+          cp "${found[0]}" "out/$filename"
+          {
+            echo "### $filename"
+            echo ""
+            echo "- signed: \`${{ steps.signing.outputs.signed }}\`"
+            echo "- versionName: \`$(grep '^flutter.versionName=' android/local.properties | cut -d= -f2-)\`"
+            echo "- versionCode: \`$(grep '^flutter.versionCode=' android/local.properties | cut -d= -f2-)\`"
+            echo "- size: $(du -h "out/$filename" | cut -f1)"
+            echo "- sha256: \`$(sha256sum "out/$filename" | cut -d' ' -f1)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ needs.version.outputs.asset_prefix }}-android
+          path: out/${{ needs.version.outputs.asset_prefix }}-android.apk
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Support long paths
+        run: git config --system core.longpaths true
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.version.outputs.source_ref }}
+
+      - name: Setup Flutter
+        uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          fvm-version: ${{ env.FVM_VERSION }}
+
+      - name: Write .env
+        run: echo "KLIPY_API_KEY=${{ secrets.KLIPY_API_KEY }}" > .env
+        shell: bash
+
+      - name: Cache native build downloads
+        uses: ./.github/actions/cache-native-deps
+
+      - name: Set installer version
+        shell: pwsh
+        env:
+          ISS_VERSION: ${{ needs.version.outputs.iss_version }}
+        run: |
+          $iss = Join-Path (Get-Location) 'windows\bluebubbles_installer_script.iss'
+          $text = [System.IO.File]::ReadAllText($iss)
+          $updated = [regex]::Replace($text, '#define MyAppVersion "[^"]*"', "#define MyAppVersion `"$env:ISS_VERSION`"")
+          $utf8 = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText($iss, $updated, $utf8)
+
+      - name: Build Windows
+        shell: pwsh
+        env:
+          BUILD_NAME: ${{ needs.version.outputs.build_name }}
+          BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+        run: |
+          fvm flutter build windows --release -v --no-pub `
+            --build-name=$env:BUILD_NAME `
+            --build-number=$env:BUILD_NUMBER `
+            --split-debug-info=build/windows/symbols
+
+      - name: Package installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at '$iscc'." }
+          & $iscc 'windows\bluebubbles_installer_script.iss'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Collect artifact
+        shell: pwsh
+        env:
+          BUILD_NAME: ${{ needs.version.outputs.build_name }}
+          ASSET_PREFIX: ${{ needs.version.outputs.asset_prefix }}
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          $filename = "$env:ASSET_PREFIX-windows.exe"
+          Copy-Item 'windows\bluebubbles_installer.exe' "out\$filename"
+          $hash = (Get-FileHash "out\$filename" -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item "out\$filename").Length
+          Add-Content $env:GITHUB_STEP_SUMMARY "### $filename"
+          Add-Content $env:GITHUB_STEP_SUMMARY ""
+          Add-Content $env:GITHUB_STEP_SUMMARY "- version: ``$env:BUILD_NAME``"
+          Add-Content $env:GITHUB_STEP_SUMMARY "- size: $size bytes"
+          Add-Content $env:GITHUB_STEP_SUMMARY "- sha256: ``$hash``"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ needs.version.outputs.asset_prefix }}-windows
+          path: out/${{ needs.version.outputs.asset_prefix }}-windows.exe
+
+  linux:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.version.outputs.source_ref }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libmpv-dev \
+            libayatana-appindicator3-dev \
+            libnotify-dev \
+            libjson-glib-dev
+
+      - name: Setup Flutter
+        uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          fvm-version: ${{ env.FVM_VERSION }}
+
+      - name: Write .env
+        run: echo "KLIPY_API_KEY=${{ secrets.KLIPY_API_KEY }}" > .env
+
+      - name: Cache native build downloads
+        uses: ./.github/actions/cache-native-deps
+
+      - name: Build
+        env:
+          BUILD_NAME: ${{ needs.version.outputs.build_name }}
+          BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+          FLUTTER_CMD: fvm flutter
+        run: bash linux/build.sh
+
+      - name: Collect artifact
+        run: |
+          mkdir -p out
+          filename="${{ needs.version.outputs.asset_prefix }}-linux-${{ matrix.arch }}.tar.gz"
+          mv "bluebubbles-linux-${{ matrix.arch }}.tar.gz" "out/$filename"
+          {
+            echo "### $filename"
+            echo ""
+            echo "- version: \`${{ needs.version.outputs.build_name }}\`"
+            echo "- size: $(du -h "out/$filename" | cut -f1)"
+            echo "- sha256: \`$(sha256sum "out/$filename" | cut -d' ' -f1)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ needs.version.outputs.asset_prefix }}-linux-${{ matrix.arch }}
+          path: out/${{ needs.version.outputs.asset_prefix }}-linux-${{ matrix.arch }}.tar.gz
+
+  release:
+    if: ${{ inputs.create_release }}
+    needs: [version, android, windows, linux]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.version.outputs.source_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build release notes
+        env:
+          BB_NAME: ${{ needs.version.outputs.bb_name }}
+          BUILD_NAME: ${{ needs.version.outputs.build_name }}
+          CANARY: ${{ needs.version.outputs.canary }}
+          ASSET_PREFIX: ${{ needs.version.outputs.asset_prefix }}
+          SOURCE_REF: ${{ needs.version.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+          # Fetch the commit SHA only — do not checkout or copy files from BlueBubbles.
+          git fetch --no-tags "https://github.com/${UPSTREAM_REPO}.git" \
+            master:refs/remotes/upstream/master
+          # Stacked-branch names live on this fork; ancestry is checked against merge^2.
+          git fetch --no-tags "https://github.com/${GITHUB_REPOSITORY}.git" \
+            '+refs/heads/developerblue/*:refs/remotes/origin/developerblue/*'
+
+          prefix_lc="${CANARY_BRANCH_PREFIX,,}"
+          user_lc="${CANARY_GITHUB_USER,,}"
+
+          # Fork GITHUB_TOKEN cannot list PRs on UPSTREAM_REPO (403). Public REST works.
+          # Prefer an open PR, then a merged one. /pulls uses state=open|closed + merged_at.
+          lookup_pr() {
+            local name="$1"
+            local json
+            json=$(curl -fsS \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              --get "https://api.github.com/repos/${UPSTREAM_REPO}/pulls" \
+              --data-urlencode "state=all" \
+              --data-urlencode "head=${CANARY_GITHUB_USER}:${name}" \
+              --data-urlencode "per_page=20") || json='[]'
+            jq -r '(map(select(.state=="open")) + map(select(.merged_at != null))) | .[0].number // empty' <<<"$json"
+          }
+
+          # Upstream PR whose head is this fork branch. Prefer open, then merged.
+          branch_line() {
+            local name="$1"
+            local num
+            num=$(lookup_pr "$name")
+            if [[ -n "$num" ]]; then
+              echo "- \`${name}\` ([#${num}](https://github.com/${UPSTREAM_REPO}/pull/${num}))"
+            else
+              echo "- \`${name}\`"
+            fi
+          }
+
+          declare -A seen=()
+          listed=0
+          {
+            echo "## Merged since upstream master"
+            echo ""
+            while IFS=$'\t' read -r merge_sha subject; do
+              [ -z "${subject:-}" ] && continue
+              branch=""
+              pr_owner=""
+              if [[ "$subject" =~ ^Merge\ branch\ \'([^\']+)\' ]]; then
+                branch="${BASH_REMATCH[1]}"
+              elif [[ "$subject" =~ ^Merge\ branch\ \"([^\"]+)\" ]]; then
+                branch="${BASH_REMATCH[1]}"
+              elif [[ "$subject" =~ ^Merge\ remote-tracking\ branch\ \'([^\']+)\' ]]; then
+                branch="${BASH_REMATCH[1]}"
+              elif [[ "$subject" =~ ^Merge\ pull\ request\ #[0-9]+\ from\ ([^[:space:]]+) ]]; then
+                pr="${BASH_REMATCH[1]}"
+                pr_owner="${pr%%/*}"
+                branch="${pr#*/}"
+              else
+                continue
+              fi
+              branch="${branch#refs/heads/}"
+              branch="${branch#origin/}"
+              branch="${branch#upstream/}"
+              branch_lc="${branch,,}"
+              pr_owner_lc="${pr_owner,,}"
+
+              case "$branch_lc" in
+                master|canary|"${prefix_lc}canary") continue ;;
+              esac
+
+              keep=0
+              if [[ "$branch_lc" == "${prefix_lc}"* ]]; then keep=1; fi
+              if [[ -n "$pr_owner_lc" && "$pr_owner_lc" == "$user_lc" ]]; then keep=1; fi
+              [[ "$keep" -eq 1 ]] || continue
+              [[ -z "${seen[$branch_lc]:-}" ]] || continue
+              seen[$branch_lc]=1
+              branch_line "$branch"
+              listed=1
+
+              second=$(git rev-parse "${merge_sha}^2" 2>/dev/null || true)
+              [[ -n "$second" ]] || continue
+              while IFS= read -r refshort; do
+                stacked="${refshort#origin/}"
+                stacked_lc="${stacked,,}"
+                case "$stacked_lc" in
+                  "${prefix_lc}canary"|canary) continue ;;
+                esac
+                [[ "$stacked_lc" == "$branch_lc" ]] && continue
+                [[ -z "${seen[$stacked_lc]:-}" ]] || continue
+                git merge-base --is-ancestor "$refshort" "$second" || continue
+                git merge-base --is-ancestor "$refshort" refs/remotes/upstream/master && continue
+                branch_line "$stacked"
+                seen[$stacked_lc]=1
+              done < <(git for-each-ref --format='%(refname:short)' --sort=refname refs/remotes/origin/developerblue/)
+            done < <(git log --merges --pretty=%H%x09%s refs/remotes/upstream/master..HEAD)
+            if [[ "$listed" -eq 0 ]]; then
+              echo "_No ${CANARY_BRANCH_PREFIX} merges since upstream master._"
+            fi
+          } > /tmp/merges.md
+
+          {
+            echo "Canary ${CANARY} of BlueBubbles ${BB_NAME} (\`${BUILD_NAME}\`)."
+            echo "Built at \`${SOURCE_REF}\`."
+            echo ""
+            notes=".github/canary-release-notes.md"
+            if [[ -f "$notes" ]]; then
+              extra=$(sed '/<!--/,/-->/d' "$notes" | sed '/^[[:space:]]*$/d' || true)
+              if [[ -n "${extra}" ]]; then
+                sed '/<!--/,/-->/d' "$notes"
+                echo ""
+              fi
+            fi
+            cat /tmp/merges.md
+            echo ""
+            echo "| Platform | File |"
+            echo "| --- | --- |"
+            echo "| Android | \`${ASSET_PREFIX}-android.apk\` |"
+            echo "| Windows | \`${ASSET_PREFIX}-windows.exe\` |"
+            echo "| Linux x86_64 | \`${ASSET_PREFIX}-linux-x86_64.tar.gz\` |"
+            echo "| Linux aarch64 | \`${ASSET_PREFIX}-linux-aarch64.tar.gz\` |"
+            echo ""
+            echo "- **Android:** sideload the APK. Canary flavor (\`com.bluebubbles.messaging.canary\`) installs next to the Play Store app."
+            echo "- **Windows:** run the installer. SmartScreen may warn; this build is not SignPath-signed."
+            echo "- **Linux:** extract and run \`./bluebubbles\`. Needs Ubuntu/Kubuntu 24.04+ plus GTK3, webkit2gtk 4.1, and libmpv."
+          } > release-body.md
+
+      - name: Download artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          path: artifacts
+
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: Canary ${{ needs.version.outputs.canary }} (${{ needs.version.outputs.build_name }})
+          target_commitish: ${{ needs.version.outputs.source_ref }}
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          body_path: release-body.md
+          files: |
+            artifacts/**/*.apk
+            artifacts/**/*.exe
+            artifacts/**/*.tar.gz
