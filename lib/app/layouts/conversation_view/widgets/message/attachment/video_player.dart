@@ -53,13 +53,17 @@ class VideoPlayer extends StatefulWidget {
   final bool isFromMe;
   final List<Attachment>? galleryAttachments;
 
+  /// Cover-expand into a parent-fixed frame (gallery / collection cards).
+  final bool fill;
+
   const VideoPlayer(
       {super.key,
       required this.file,
       required this.attachment,
       required this.controller,
       required this.isFromMe,
-      this.galleryAttachments});
+      this.galleryAttachments,
+      this.fill = false});
 
   final ConversationViewController? controller;
 
@@ -239,6 +243,21 @@ class _VideoPlayerState extends State<VideoPlayer> with AutomaticKeepAliveClient
   // memory; always rendered via Image.file.
   String? thumbnailPath;
   bool thumbnailFailed = false;
+
+  BoxFit get _previewFit {
+    final fill = SettingsSvc.settings.previewLayout.value == PreviewLayout.fill;
+    if (!widget.fill) return BoxFit.cover;
+    return fill ? BoxFit.cover : BoxFit.contain;
+  }
+
+  /// Expand into a parent-fixed gallery frame, or size to aspect ratio for bubble videos.
+  Widget _sizeMedia(Widget child) {
+    if (widget.fill) return SizedBox.expand(child: child);
+    return Obx(() => _boundedAspectRatio(
+          ratio: aspectRatio.value,
+          child: child,
+        ));
+  }
 
   @override
   void initState() {
@@ -478,28 +497,30 @@ class _VideoPlayerState extends State<VideoPlayer> with AutomaticKeepAliveClient
           child: Stack(
             alignment: Alignment.center,
             children: <Widget>[
-              Obx(() => _boundedAspectRatio(
-                    ratio: aspectRatio.value,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Video(
-                          controller: videoController!,
-                          controls: null,
-                          fit: BoxFit.cover,
+              _sizeMedia(
+                Obx(() {
+                  final fit = _previewFit;
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Video(
+                        controller: videoController!,
+                        controls: null,
+                        fit: fit,
+                      ),
+                      // Keep the thumbnail painted over the black surface until the first frame decodes
+                      if (!kIsDesktop && !kIsWeb && thumbnailPath != null)
+                        IgnorePointer(
+                          child: AnimatedOpacity(
+                            opacity: firstFrameReady.value ? 0 : 1,
+                            duration: const Duration(milliseconds: 150),
+                            child: _buildThumbnailImage(context, fit: fit),
+                          ),
                         ),
-                        // Keep the thumbnail painted over the black surface until the first frame decodes
-                        if (!kIsDesktop && !kIsWeb && thumbnailPath != null)
-                          Obx(() => IgnorePointer(
-                                child: AnimatedOpacity(
-                                  opacity: firstFrameReady.value ? 0 : 1,
-                                  duration: const Duration(milliseconds: 150),
-                                  child: _buildThumbnailImage(context, fit: BoxFit.cover),
-                                ),
-                              )),
-                      ],
-                    ),
-                  )),
+                    ],
+                  );
+                }),
+              ),
               PlayPauseButton(showPlayPauseOverlay: showPlayPauseOverlay, controller: videoController),
               MuteButton(
                   showPlayPauseOverlay: showPlayPauseOverlay,
@@ -539,16 +560,15 @@ class _VideoPlayerState extends State<VideoPlayer> with AutomaticKeepAliveClient
           // All mobile states (placeholder → thumbnail → playing) share the same
           // Obx(AspectRatio(aspectRatio.value)) geometry so state changes never resize the box
           child: thumbnailPath == null && !thumbnailFailed && !kIsDesktop && !kIsWeb
-              ? Obx(() => _boundedAspectRatio(
-                    ratio: aspectRatio.value,
-                    child: Center(
-                      child: PlayPauseButton(
-                        showPlayPauseOverlay: showPlayPauseOverlay,
-                        controller: videoController,
-                        customOnTap: _playInline,
-                      ),
+              ? _sizeMedia(
+                  Center(
+                    child: PlayPauseButton(
+                      showPlayPauseOverlay: showPlayPauseOverlay,
+                      controller: videoController,
+                      customOnTap: _playInline,
                     ),
-                  ))
+                  ),
+                )
               : thumbnailPath == null && !thumbnailFailed
                   ? Padding(
                       padding: const EdgeInsets.all(15.0),
@@ -588,15 +608,16 @@ class _VideoPlayerState extends State<VideoPlayer> with AutomaticKeepAliveClient
                         ],
                       ),
                     )
-                  : Obx(() => _boundedAspectRatio(
-                        ratio: aspectRatio.value,
-                        child: Stack(
+                  : _sizeMedia(
+                      Obx(() {
+                        final fit = _previewFit;
+                        return Stack(
                           alignment: Alignment.center,
                           children: [
                             Positioned.fill(
                               child: _buildThumbnailImage(
                                 context,
-                                fit: BoxFit.cover,
+                                fit: fit,
                                 filterQuality: FilterQuality.medium,
                                 frameBuilder: (context, child, frame, wasSyncLoaded) => wasSyncLoaded
                                     ? child
@@ -619,8 +640,10 @@ class _VideoPlayerState extends State<VideoPlayer> with AutomaticKeepAliveClient
                                 controller: videoController,
                                 isFromMe: isFromMe),
                           ],
-                        ),
-                      ))),
+                        );
+                      }),
+                    ),
+          ),
     );
   }
 

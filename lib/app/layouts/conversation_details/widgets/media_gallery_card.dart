@@ -406,6 +406,49 @@ class _ImageDisplayState extends State<ImageDisplay> {
   String? get imagePath => widget.imagePath;
   Duration? get duration => widget.duration;
 
+  /// Crop-fills the square cell (`BoxFit.cover`) instead of letterboxing the full image.
+  Widget _buildCoverThumbnail(BuildContext context, double cardSize) {
+    final path = file?.path ?? imagePath;
+    final bytes = file?.bytes;
+    final cacheWidth = max(1, (cardSize * MediaQuery.of(context).devicePixelRatio).round());
+
+    if (path != null) {
+      return Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
+        cacheWidth: cacheWidth,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+      );
+    }
+    if (bytes != null) {
+      return Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
+        cacheWidth: cacheWidth,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildPreview(BuildContext context, double cardSize) {
+    if (SettingsSvc.settings.previewLayout.value == PreviewLayout.fit) {
+      final path = file?.path ?? imagePath;
+      final bytes = file?.bytes;
+      if (path == null && bytes == null) return const SizedBox.shrink();
+      return ImageBlurCanvas(filePath: path, bytes: bytes);
+    }
+    return _buildCoverThumbnail(context, cardSize);
+  }
+
   @override
   Widget build(BuildContext context) {
     final double cardSize = NavigationSvc.width(context) / max(2, NavigationSvc.width(context) ~/ 200);
@@ -434,11 +477,7 @@ class _ImageDisplayState extends State<ImageDisplay> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Blurred canvas: filled background + centered foreground.
-                    ImageBlurCanvas(
-                      filePath: file?.path ?? imagePath,
-                      bytes: file?.bytes,
-                    ),
+                    Obx(() => _buildPreview(context, cardSize)),
                     if ((attachment.mimeType?.contains("video") ?? false) && duration != null)
                       Positioned(
                         bottom: 10,

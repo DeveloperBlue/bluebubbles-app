@@ -261,6 +261,26 @@ class _AttachmentPanelState extends State<AttachmentPanel> with ThemeHelpers {
                         secondaryColor: headerColor,
                         useModernMenu: true,
                       ),
+                      const SettingsDivider(padding: EdgeInsets.only(left: 16.0)),
+                      if (iOS)
+                        const SettingsTile(
+                          title: "Preview Layout",
+                          subtitle: "How photos and videos fill gallery grid cells",
+                        ),
+                      SettingsOptions<PreviewLayout>(
+                        initial: SettingsSvc.settings.previewLayout.value,
+                        onChanged: (val) async {
+                          if (val == null) return;
+                          SettingsSvc.settings.previewLayout.value = val;
+                          await SettingsSvc.settings.saveOneAsync('previewLayout');
+                        },
+                        options: PreviewLayout.values,
+                        textProcessing: (val) => val.name,
+                        title: "Preview Layout",
+                        subtitle: "How photos and videos fill gallery grid cells",
+                        secondaryColor: headerColor,
+                        useModernMenu: true,
+                      ),
                     ],
                   )),
               ],

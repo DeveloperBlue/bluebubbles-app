@@ -242,6 +242,7 @@ List<Widget> buildSettingItemList({
             "Ask Where to Save Attachments",
             "Mute in Attachment Preview",
             "Mute in Fullscreen Player",
+            "Preview Layout",
             "Arrow key direction",
             "Swipe Direction",
           ],

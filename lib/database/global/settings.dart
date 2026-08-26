@@ -51,6 +51,7 @@ class Settings {
   final RxString autoSavePicsLocation = "Pictures".obs;
   final RxString autoSaveDocsLocation = FilesystemService.androidDownloadsPath.obs;
   final RxDouble previewImageQuality = 0.75.obs; // 0.25 to 1.0
+  final Rx<PreviewLayout> previewLayout = PreviewLayout.fill.obs;
   final RxBool autoOpenKeyboard = true.obs;
   final RxBool hideTextPreviews = false.obs;
 
@@ -334,6 +335,7 @@ class Settings {
       'autoSavePicsLocation': autoSavePicsLocation.value,
       'autoSaveDocsLocation': autoSaveDocsLocation.value,
       'imageQuality': previewImageQuality.value,
+      'previewLayout': previewLayout.value.index,
       'autoOpenKeyboard': autoOpenKeyboard.value,
       'hideTextPreviews': hideTextPreviews.value,
       'linkPreviewPolicy': linkPreviewPolicy.value.index,
@@ -500,6 +502,9 @@ class Settings {
         map['autoSaveDocsLocation'] ?? SettingsSvc.settings.autoSaveDocsLocation.value;
     SettingsSvc.settings.previewImageQuality.value =
         map['imageQuality']?.toDouble() ?? SettingsSvc.settings.previewImageQuality.value;
+    SettingsSvc.settings.previewLayout.value = map['previewLayout'] != null
+        ? PreviewLayout.values[map['previewLayout']]
+        : SettingsSvc.settings.previewLayout.value;
     SettingsSvc.settings.autoOpenKeyboard.value =
         map['autoOpenKeyboard'] ?? SettingsSvc.settings.autoOpenKeyboard.value;
     SettingsSvc.settings.hideTextPreviews.value =
@@ -759,6 +764,8 @@ class Settings {
     s.autoSavePicsLocation.value = map['autoSavePicsLocation'] ?? "Pictures";
     s.autoSaveDocsLocation.value = map['autoSaveDocsLocation'] ?? FilesystemService.androidDownloadsPath;
     s.previewImageQuality.value = map['imageQuality']?.toDouble() ?? 1.0;
+    s.previewLayout.value =
+        map['previewLayout'] != null ? PreviewLayout.values[map['previewLayout']] : PreviewLayout.fill;
     s.autoOpenKeyboard.value = map['autoOpenKeyboard'] ?? true;
     s.hideTextPreviews.value = map['hideTextPreviews'] ?? false;
     s.linkPreviewPolicy.value = _readLinkPreviewPolicy(map);

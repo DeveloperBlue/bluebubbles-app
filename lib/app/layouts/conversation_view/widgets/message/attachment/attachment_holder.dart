@@ -6,6 +6,7 @@ import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attach
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/parts/not_loaded_content.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/parts/downloading_content.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/parts/resolved_file_content.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/message_popup_holder.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/reply/reply_bubble.dart';
 import 'package:bluebubbles/app/state/attachment_state.dart';
 import 'package:bluebubbles/app/state/attachment_state_scope.dart';
@@ -26,12 +27,17 @@ class AttachmentHolder extends StatefulWidget {
     required this.message,
     this.transparentBackground = false,
     this.showCardShadow = false,
+    this.fill = false,
     this.galleryAttachments,
   });
 
   final MessagePart message;
   final bool transparentBackground;
   final bool showCardShadow;
+
+  /// Cover-expand into a parent-fixed frame and suppress standalone bubble chrome.
+  /// Parents own clip/shadow. Disabled automatically inside [PopupScope].
+  final bool fill;
   final List<Attachment>? galleryAttachments;
 
   @override
@@ -160,7 +166,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
   ///   itself from [Attachment.displayBox], so reserving that box would just
   ///   move the jump rather than remove it.
   ({double width, double height})? _reservedImageBox(BuildContext context, bool isInReply, bool hideAttachments) {
-    if (isInReply || hideAttachments || widget.transparentBackground) return null;
+    if (isInReply || hideAttachments || widget.transparentBackground || widget.fill) return null;
     if (attachment.mimeStart != "image") return null;
     if (!attachment.hasValidSize) return null;
     return attachment.displayBox(NavigationSvc.width(context) * 0.5, context.height * 0.6);
@@ -177,6 +183,11 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
       left: message.isFromMe! ? 0 : 10,
       right: message.isFromMe! ? 10 : 0,
     );
+
+    // Collection fill cards are sized by the parent; padding is on the collection wrapper.
+    if (widget.fill) {
+      return EdgeInsets.zero;
+    }
 
     // Treat an error preview the same as a resolved file — no extra padding.
     final hasError = state.hasError.value || message.error > 0;
@@ -249,6 +260,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
     required bool isInReply,
     required bool isiOS,
     required ({double width, double height})? reservedBox,
+    required bool fill,
   }) {
     // Redacted mode always shows placeholder regardless of download status.
     if (hideAttachments) {
@@ -272,6 +284,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
           cvController: controller.cvController,
           isInReply: isInReply,
           forceAllCornersRounded: widget.transparentBackground,
+          fill: fill,
           galleryAttachments: widget.galleryAttachments,
         );
       }
@@ -288,6 +301,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
         cvController: controller.cvController,
         isInReply: isInReply,
         forceAllCornersRounded: widget.transparentBackground,
+        fill: fill,
         galleryAttachments: widget.galleryAttachments,
       );
     }
@@ -310,7 +324,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
           downloadController: download,
           isInReply: isInReply,
           isiOS: isiOS,
-          isInGallery: widget.transparentBackground,
+          isInGallery: widget.transparentBackground || widget.fill,
           compact: compact,
           showTail: showTail,
           isFromMe: message.isFromMe!,
@@ -370,11 +384,16 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
         final hasError = state.hasError.value || message.error > 0;
         final hasPreview = state.resolvedFile.value != null ||
             (hasError && message.isFromMe == true && state.uploadPreviewFile.value != null);
-        final transparentCard = hasPreview && (widget.transparentBackground || isPass || attachment.mimeStart == "image");
+        // Message popup has no tight parent frame — skip cover-fill expand.
+        final inPopup = PopupScope.maybeOf(context) != null;
+        final fill = widget.fill && !inPopup;
+        final transparentCard = hasPreview &&
+            (widget.transparentBackground || widget.fill || isPass || attachment.mimeStart == "image");
         // Gallery cards in non-preview states (downloading, not-loaded, etc.) need
         // to fill the SizedBox dimensions set by MessageImageGallery and have their
         // background clipped to rounded corners.
         final shouldExpandAndClipForGallery = widget.transparentBackground && !hasPreview;
+        final expand = fill || shouldExpandAndClipForGallery;
         // Only meaningful before the file resolves; once it has, the image
         // itself defines the box.
         final reservedBox = hasPreview ? null : _reservedImageBox(context, isInReply, hideAttachments);
@@ -405,7 +424,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
                     // natural size — smaller than the gallery SizedBox. SizedBox.expand()
                     // snaps back to the max loosened constraints (= cardWidth x cardHeight)
                     // and forces tight dimensions all the way down to the content widget.
-                    child: shouldExpandAndClipForGallery
+                    child: expand
                         ? SizedBox.expand(
                             child: SendingOpacityWrapper(
                               child: _buildContent(
@@ -415,6 +434,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
                                 isInReply: isInReply,
                                 isiOS: isiOS,
                                 reservedBox: reservedBox,
+                                fill: fill,
                               ),
                             ),
                           )
@@ -444,6 +464,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
                                   isInReply: isInReply,
                                   isiOS: isiOS,
                                   reservedBox: reservedBox,
+                                  fill: fill,
                                 ),
                               ),
                             ),
@@ -482,7 +503,7 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
         // saveLayer bounded by the messages view repaint boundary. The dstOver blend
         // then fills every transparent pixel in that large layer with tertiaryContainer,
         // turning the entire messages view pink/purple while an attachment downloads.
-        if (!transparentCard && !widget.transparentBackground) {
+        if (!transparentCard && !widget.transparentBackground && !widget.fill) {
           content = ColorFiltered(
             colorFilter: ColorFilter.mode(
               context.theme.colorScheme.tertiaryContainer.withValues(alpha: 0.5),
