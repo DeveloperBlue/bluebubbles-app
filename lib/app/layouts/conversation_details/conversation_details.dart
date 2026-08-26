@@ -48,7 +48,9 @@ class _ConversationDetailsState extends State<ConversationDetails> with WidgetsB
     if (ChatsSvc.activeChat != null) {
       ChatsSvc.setActiveToAlive();
       final controller = cvc(ChatsSvc.activeChat!.chat);
-      if (!controller.skipComposerFocusOnReturn) {
+      // Desktop has no software keyboard. On mobile, never auto-open when the setting is off.
+      if (!controller.skipComposerFocusOnReturn &&
+          (kIsDesktop || SettingsSvc.settings.autoOpenKeyboard.value)) {
         controller.lastFocusedNode.requestFocus();
       }
     }
