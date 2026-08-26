@@ -55,7 +55,7 @@ class VideoPlayer extends StatefulWidget {
   final List<Attachment>? galleryAttachments;
   final CollectionMediaController? collectionController;
 
-  /// Cover-expand into a parent-fixed frame (gallery cards).
+  /// Cover-expand into a parent-fixed frame (gallery / collection cards).
   final bool fill;
 
   const VideoPlayer(
@@ -246,6 +246,12 @@ class _VideoPlayerState extends State<VideoPlayer> with AutomaticKeepAliveClient
   // memory; always rendered via Image.file.
   String? thumbnailPath;
   bool thumbnailFailed = false;
+
+  BoxFit get _previewFit {
+    final fill = SettingsSvc.settings.previewLayout.value == PreviewLayout.fill;
+    if (!widget.fill) return BoxFit.cover;
+    return fill ? BoxFit.cover : BoxFit.contain;
+  }
 
   /// Expand into a parent-fixed gallery frame, or size to aspect ratio for bubble videos.
   Widget _sizeMedia(Widget child) {
@@ -497,25 +503,28 @@ class _VideoPlayerState extends State<VideoPlayer> with AutomaticKeepAliveClient
             alignment: Alignment.center,
             children: <Widget>[
               _sizeMedia(
-                Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Video(
-                      controller: videoController!,
-                      controls: null,
-                      fit: BoxFit.cover,
-                    ),
-                    // Keep the thumbnail painted over the black surface until the first frame decodes
-                    if (!kIsDesktop && !kIsWeb && thumbnailPath != null)
-                      Obx(() => IgnorePointer(
-                            child: AnimatedOpacity(
-                              opacity: firstFrameReady.value ? 0 : 1,
-                              duration: const Duration(milliseconds: 150),
-                              child: _buildThumbnailImage(context, fit: BoxFit.cover),
-                            ),
-                          )),
-                  ],
-                ),
+                Obx(() {
+                  final fit = _previewFit;
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Video(
+                        controller: videoController!,
+                        controls: null,
+                        fit: fit,
+                      ),
+                      // Keep the thumbnail painted over the black surface until the first frame decodes
+                      if (!kIsDesktop && !kIsWeb && thumbnailPath != null)
+                        IgnorePointer(
+                          child: AnimatedOpacity(
+                            opacity: firstFrameReady.value ? 0 : 1,
+                            duration: const Duration(milliseconds: 150),
+                            child: _buildThumbnailImage(context, fit: fit),
+                          ),
+                        ),
+                    ],
+                  );
+                }),
               ),
               PlayPauseButton(showPlayPauseOverlay: showPlayPauseOverlay, controller: videoController),
               MuteButton(
@@ -614,36 +623,39 @@ class _VideoPlayerState extends State<VideoPlayer> with AutomaticKeepAliveClient
                       ),
                     )
                   : _sizeMedia(
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Positioned.fill(
-                            child: _buildThumbnailImage(
-                              context,
-                              fit: BoxFit.cover,
-                              filterQuality: FilterQuality.medium,
-                              frameBuilder: (context, child, frame, wasSyncLoaded) => wasSyncLoaded
-                                  ? child
-                                  : AnimatedOpacity(
-                                      opacity: frame == null ? 0 : 1,
-                                      duration: const Duration(milliseconds: 150),
-                                      child: child,
-                                    ),
+                      Obx(() {
+                        final fit = _previewFit;
+                        return Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Positioned.fill(
+                              child: _buildThumbnailImage(
+                                context,
+                                fit: fit,
+                                filterQuality: FilterQuality.medium,
+                                frameBuilder: (context, child, frame, wasSyncLoaded) => wasSyncLoaded
+                                    ? child
+                                    : AnimatedOpacity(
+                                        opacity: frame == null ? 0 : 1,
+                                        duration: const Duration(milliseconds: 150),
+                                        child: child,
+                                      ),
+                              ),
                             ),
-                          ),
-                          if (thumbnailFailed) MediaCornerBadge(label: "Preview Unavailable", alignLeft: isFromMe),
-                          PlayPauseButton(
-                            showPlayPauseOverlay: showPlayPauseOverlay,
-                            controller: videoController,
-                            customOnTap: _playInline,
-                          ),
-                          MuteButton(
+                            if (thumbnailFailed) MediaCornerBadge(label: "Preview Unavailable", alignLeft: isFromMe),
+                            PlayPauseButton(
                               showPlayPauseOverlay: showPlayPauseOverlay,
-                              muted: muted,
                               controller: videoController,
-                              isFromMe: isFromMe),
-                        ],
-                      ),
+                              customOnTap: _playInline,
+                            ),
+                            MuteButton(
+                                showPlayPauseOverlay: showPlayPauseOverlay,
+                                muted: muted,
+                                controller: videoController,
+                                isFromMe: isFromMe),
+                          ],
+                        );
+                      }),
                     )),
     );
   }

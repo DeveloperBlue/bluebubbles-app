@@ -13,7 +13,7 @@ Reusable widgets composing the conversation details / info panel.
 | `participants_list.dart` | **iOS-only.** Scrollable list of `ContactTile`s for group chats. Material/Samsung use `../material/material_participants_section.dart` instead |
 | `attachment_section_header.dart` | Section label + "Show more" for attachment previews |
 | `attachments_loader.dart` | Loads shared attachments for media/docs/locations |
-| `media_gallery_card.dart` | Tappable thumbnail card for media or file items |
+| `media_gallery_card.dart` | Tappable thumbnail card; fill crops, fit letterboxes with `ImageBlurCanvas` (`previewLayout`) |
 | `details_message_popup_binder.dart` | Long-press / right-click wrapper that opens the message popup for a details tile |
 
 All four widgets in `sections/` plus `attachment_section_header.dart` and `media_gallery_card.dart`

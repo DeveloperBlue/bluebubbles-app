@@ -41,7 +41,7 @@ class ResolvedFileContent extends StatelessWidget {
   final bool isInReply;
   final bool forceAllCornersRounded;
 
-  /// Cover-fill a parent-fixed frame (gallery cards).
+  /// Cover-fill a parent-fixed frame (gallery / collection cards).
   final bool fill;
   final List<Attachment>? galleryAttachments;
 

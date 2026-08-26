@@ -137,6 +137,8 @@ enum SwipeDirection {
   RIGHT,
 }
 
+enum PreviewLayout { fill, fit }
+
 enum BBTitleBarStyle { native, custom, hidden }
 
 /// When the app may contact a linked website to build a preview card.

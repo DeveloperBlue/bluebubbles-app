@@ -20,7 +20,7 @@ class ImageViewer extends StatefulWidget {
   final bool isFromMe;
   final bool isInReply;
 
-  /// Cover-expand into a parent-fixed frame (gallery cards). Layout only.
+  /// Cover-expand into a parent-fixed frame (gallery / collection cards). Layout only.
   final bool fill;
 
   const ImageViewer({
@@ -84,7 +84,10 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
 
   bool get _isGif => attachment.mimeType?.contains("gif") ?? attachment.path.endsWith(".gif");
 
-  BoxFit get _fit => widget.fill ? BoxFit.cover : BoxFit.contain;
+  BoxFit get _fit {
+    if (!widget.fill) return BoxFit.contain;
+    return SettingsSvc.settings.previewLayout.value == PreviewLayout.fill ? BoxFit.cover : BoxFit.contain;
+  }
 
   Widget _wrapForFill(Widget child) => widget.fill ? SizedBox.expand(child: child) : child;
 
@@ -178,6 +181,10 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
     // stalls the UI on large/many GIFs. Only opt in when Reduce Motion is on.
     if (_isGif && kIsDesktop) {
       return Obx(() {
+        if (widget.fill) {
+          // ignore: unused_local_variable
+          final _ = SettingsSvc.settings.previewLayout.value;
+        }
         if (!SettingsSvc.settings.reduceMotion.value) return _buildStandardImage(context);
         return FutureBuilder<Uint8List?>(
           future: _gifBytesFuture ??= _loadGifBytes(),
@@ -226,7 +233,13 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
       });
     }
 
-    return _buildStandardImage(context);
+    return widget.fill
+        ? Obx(() {
+            // ignore: unused_local_variable
+            final _ = SettingsSvc.settings.previewLayout.value;
+            return _buildStandardImage(context);
+          })
+        : _buildStandardImage(context);
   }
 
   /// "GIF" badge shown on a paused reduce-motion GIF, styled like the LIVE badge.

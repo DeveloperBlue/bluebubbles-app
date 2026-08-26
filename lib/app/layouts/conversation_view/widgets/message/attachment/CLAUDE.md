@@ -23,7 +23,7 @@ Multi-attachment **collections** live in `collections/` → [CLAUDE.md](collecti
 
 **Download state**: `AttachmentHolder` holds an `Rx<dynamic> content` that is `null` until downloaded. Observes `AttachmentDownloadController` for progress updates. Auto-download is gated by `AttachmentsSvc.canAutoDownload()`.
 
-**`fill`**: When true, cover-expands into a parent-fixed frame and skips standalone bubble chrome. Collection parents own clip/shadow — see [collections/CLAUDE.md](collections/CLAUDE.md).
+**`fill`**: When true, expands into a parent-fixed frame and skips standalone bubble chrome. Collection parents own clip/shadow — see [collections/CLAUDE.md](collections/CLAUDE.md). Crop vs letterbox follows `SettingsSvc.settings.previewLayout` (`PreviewLayout.fill` / `fit`).
 
 **Controller**: Extends `CustomStateful<MessageWidgetController>`. Always set `forceDelete = false` in `initState()` — the message list owns the controller lifecycle.
 

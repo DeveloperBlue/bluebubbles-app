@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:animations/animations.dart';
+import 'package:bluebubbles/app/components/image_blur_canvas.dart';
 import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/other_file.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
@@ -501,6 +502,16 @@ class _ImageDisplayState extends State<ImageDisplay> {
     return const SizedBox.shrink();
   }
 
+  Widget _buildPreview(BuildContext context, double cardSize) {
+    if (SettingsSvc.settings.previewLayout.value == PreviewLayout.fit) {
+      final path = file?.path ?? imagePath;
+      final bytes = file?.bytes;
+      if (path == null && bytes == null) return const SizedBox.shrink();
+      return ImageBlurCanvas(filePath: path, bytes: bytes);
+    }
+    return _buildCoverThumbnail(context, cardSize);
+  }
+
   @override
   Widget build(BuildContext context) {
     final double cardSize = NavigationSvc.width(context) / max(2, NavigationSvc.width(context) ~/ 200);
@@ -533,7 +544,7 @@ class _ImageDisplayState extends State<ImageDisplay> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    _buildCoverThumbnail(context, cardSize),
+                    Obx(() => _buildPreview(context, cardSize)),
                     if ((attachment.mimeType?.contains("video") ?? false) && duration != null)
                       Positioned(
                         bottom: 10,

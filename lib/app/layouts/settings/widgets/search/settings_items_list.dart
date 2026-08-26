@@ -243,6 +243,7 @@ List<Widget> buildSettingItemList({
             "Multi-Attachment Layout",
             "Mute in Attachment Preview",
             "Mute in Fullscreen Player",
+            "Preview Layout",
             "Arrow key direction",
             "Swipe Direction",
           ],
