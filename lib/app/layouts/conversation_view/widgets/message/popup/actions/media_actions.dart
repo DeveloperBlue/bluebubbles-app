@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/message_popup_action_context.dart';
+import 'package:bluebubbles/app/layouts/fullscreen_media/conversation_fullscreen_holder.dart';
+import 'package:bluebubbles/app/wrappers/theme_switcher.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
 import 'package:bluebubbles/utils/share.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -73,6 +76,38 @@ Future<void> openInImageViewer(MessagePopupActionContext ctx) async {
     Logger.error("Failed to open image in viewer!", error: ex, trace: trace);
     ctx.showSnack("Open Error", "Failed to open image!");
   }
+}
+
+/// Tap on the details-origin overlay clone: open the in-app fullscreen viewer when
+/// the part is a downloaded image/video; otherwise just dismiss the popup.
+///
+/// The clone is wrapped in [IgnorePointer], so this must be wired on an ancestor
+/// [GestureDetector] rather than relying on the tile's own tap handlers.
+void openFullscreenFromOverlay(MessagePopupActionContext ctx) {
+  final guid = ctx.detailsAttachmentGuid;
+  final attachment = guid != null
+      ? ctx.part.attachments.firstWhereOrNull((a) => a.guid == guid) ?? ctx.part.attachments.firstOrNull
+      : ctx.part.attachments.firstOrNull;
+
+  final canView = attachment != null &&
+      (attachment.mimeStart == "image" || attachment.mimeStart == "video") &&
+      AttachmentsSvc.getContent(attachment, autoDownload: false) is PlatformFile;
+
+  final navigator = Navigator.of(ctx.context);
+  final chat = ctx.chat;
+  ctx.popDetails();
+
+  if (!canView) return;
+
+  navigator.push(
+    ThemeSwitcher.buildPageRoute(
+      builder: (context) => ConversationFullscreenHolder(
+        currentChat: chat,
+        attachment: attachment,
+        showInteractions: true,
+      ),
+    ),
+  );
 }
 
 void copyAttachment(MessagePopupActionContext ctx) {

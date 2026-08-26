@@ -348,12 +348,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                               // reacts to shared state by doing work (URL
                               // preview refreshes, say) knows not to — this
                               // copy and the real bubble both see every signal.
-                              child: MessageCloneScope(
-                                child: MessageStateScope(
-                                  messageState: widget.controller,
-                                  child: widget.child,
-                                ),
-                              ),
+                              child: _buildOverlayChild(),
                             ),
                           ),
                         ),
@@ -574,6 +569,28 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
       detailsAttachmentGuid: widget.detailsAttachmentGuid,
       popToConversation: widget.popToConversation,
       onMessageDeleted: widget.onMessageDeleted,
+    );
+  }
+
+  /// Cloned bubble/tile for the iOS overlay. Details origin wraps the child in
+  /// [IgnorePointer] (see [showMessagePopup]), so taps are handled here to open
+  /// the fullscreen viewer for downloaded image/video attachments.
+  Widget _buildOverlayChild() {
+    final clone = MessageCloneScope(
+      child: MessageStateScope(
+        messageState: widget.controller,
+        child: widget.child,
+      ),
+    );
+    if (widget.origin != MessagePopupOrigin.details) return clone;
+    return GestureDetector(
+      // IgnorePointer on the clone (showMessagePopup) makes the subtree miss
+      // hit tests; opaque so this detector still receives the tap.
+      behavior: HitTestBehavior.opaque,
+      onTap: () => popup_media_actions.openFullscreenFromOverlay(
+        _buildActionContext(DetailsMenuAction.OpenInImageViewer),
+      ),
+      child: clone,
     );
   }
 
