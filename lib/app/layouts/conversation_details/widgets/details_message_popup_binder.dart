@@ -1,3 +1,5 @@
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/attachment_holder.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/interactive/interactive_holder.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/message_popup.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/show_message_popup.dart';
 import 'package:bluebubbles/app/state/message_state.dart';
@@ -63,9 +65,9 @@ class _DetailsMessagePopupBinderState extends State<DetailsMessagePopupBinder> {
 
     showMessagePopup(
       context: context,
-      size: size,
+      size: _overlaySize(size, widget.attachment),
       childPosition: childPos,
-      child: widget.child,
+      child: _overlayChild(part),
       part: part,
       controller: messageState,
       cvController: cvController,
@@ -83,6 +85,32 @@ class _DetailsMessagePopupBinderState extends State<DetailsMessagePopupBinder> {
         }
       },
     );
+  }
+
+  /// Conversation-view attachment box (50% pane × 60% screen), not the grid cell.
+  Size _overlaySize(Size tileSize, Attachment? attachment) {
+    final halfWidth = NavigationSvc.width(context) * 0.5;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.6;
+    if (attachment != null && (attachment.mimeStart == 'image' || attachment.mimeStart == 'video')) {
+      final box = attachment.displayBox(halfWidth, maxHeight);
+      return Size(box.width, box.height);
+    }
+    if (attachment != null) {
+      return Size(halfWidth, tileSize.height);
+    }
+    final linkWidth = NavigationSvc.width(context) * (NavigationSvc.isTabletMode(context) ? 0.5 : 0.6);
+    return Size(linkWidth, tileSize.height);
+  }
+
+  Widget _overlayChild(MessagePart part) {
+    if (widget.attachment != null) {
+      return AttachmentHolder(
+        message: part,
+        transparentBackground: true,
+        showCardShadow: true,
+      );
+    }
+    return InteractiveHolder(message: part);
   }
 
   MessagePart _partFor(MessageState state, Attachment? attachment) {

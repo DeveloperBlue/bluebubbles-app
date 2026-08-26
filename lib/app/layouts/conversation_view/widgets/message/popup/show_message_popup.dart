@@ -11,6 +11,10 @@ import 'package:get/get.dart';
 
 void _noopTapback([String? type, int? part]) {}
 
+bool _allowDetailsOverlayPointers(MessagePart part) {
+  return part.attachments.any((a) => a.mimeStart == 'video') && !SettingsSvc.settings.highPerfMode.value;
+}
+
 /// Presents [MessagePopup] as a translucent fullscreen route over [context].
 ///
 /// [childPosition] should be the child's global origin from [RenderBox.localToGlobal];
@@ -56,7 +60,9 @@ Future<dynamic> showMessagePopup({
     cvController.selected.add(controller.message);
   }
 
-  final overlayChild = fromConversation ? child : IgnorePointer(child: child);
+  final overlayChild = fromConversation || _allowDetailsOverlayPointers(part)
+      ? child
+      : IgnorePointer(child: child);
 
   if (kIsDesktop || kIsWeb) {
     cvController.showingOverlays = true;
