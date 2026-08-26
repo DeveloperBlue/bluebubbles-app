@@ -29,6 +29,7 @@ finishes, and the media grid column count follows the Material window size class
 | File | Purpose |
 |------|---------|
 | `media_filters_sheet.dart` | Shared attachment filters bottom sheet + app bar tune button |
+| `attachment_section_empty.dart` | Full-page empty state, including a "Clear filters" variant |
 
 ## `sections/`
 

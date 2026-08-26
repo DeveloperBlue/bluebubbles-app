@@ -27,6 +27,9 @@ class BBChip extends StatelessWidget {
   /// Corner radius override — defaults to `BorderRadius.circular(20)`.
   final BorderRadius? borderRadius;
 
+  /// Inner padding around the chip contents. Defaults to Material 3's 8px on all sides.
+  final EdgeInsetsGeometry? padding;
+
   const BBChip({
     super.key,
     required this.label,
@@ -43,6 +46,7 @@ class BBChip extends StatelessWidget {
     this.backgroundColor,
     this.labelStyle,
     this.borderRadius,
+    this.padding,
   });
 
   @override
@@ -67,6 +71,7 @@ class BBChip extends StatelessWidget {
       checkmarkColor: checkmarkColor,
       selectedColor: selectedColor,
       backgroundColor: backgroundColor,
+      padding: padding,
     );
 
     if (onLongPress == null) return chip;

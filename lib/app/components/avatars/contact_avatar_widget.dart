@@ -20,6 +20,7 @@ class ContactAvatarWidget extends StatefulWidget {
       this.contact,
       this.scaleSize = true,
       this.preferHighResAvatar = false,
+      this.useGroupIcon = false,
       this.padding = EdgeInsets.zero});
 
   /// Canonical decode size for avatar images. Every avatar usage shares one
@@ -36,6 +37,7 @@ class ContactAvatarWidget extends StatefulWidget {
   final bool editable;
   final bool scaleSize;
   final bool preferHighResAvatar;
+  final bool useGroupIcon;
   final EdgeInsets padding;
 
   @override
@@ -131,7 +133,7 @@ class _ContactAvatarWidgetState extends State<ContactAvatarWidget> with ThemeHel
   /// Shared fallback for the avatar circle: initials when available, otherwise
   /// a generic person icon. Used by the no-avatar branch, while an avatar image
   /// is still decoding (frameBuilder), and when the image file fails to load.
-  Widget _buildInitialsOrIcon(double size, bool iOS, String? initials) {
+  Widget _buildInitialsOrIcon(double size, bool iOS, String? initials, {IconData? icon}) {
     if (!isNullOrEmpty(initials)) {
       return SizedBox(
         width: size,
@@ -155,7 +157,7 @@ class _ContactAvatarWidgetState extends State<ContactAvatarWidget> with ThemeHel
     return Padding(
       padding: const EdgeInsets.only(left: 1),
       child: Icon(
-        iOS ? CupertinoIcons.person_fill : Icons.person,
+        icon ?? (iOS ? CupertinoIcons.person_fill : Icons.person),
         color: material ? context.theme.colorScheme.surface : Colors.white,
         key: Key("$keyPrefix-avatar-icon"),
         size: size / 2 * (material ? 1.25 : 1),
@@ -247,7 +249,14 @@ class _ContactAvatarWidgetState extends State<ContactAvatarWidget> with ThemeHel
               // Reactive values already computed above in Obx scope.
               final contactV2Avatar = cachedAvatarPath;
 
-              if (!hideContactInfo && widget.handle == null && userAvatarPath != null) {
+              if (widget.useGroupIcon) {
+                return _buildInitialsOrIcon(
+                  size,
+                  iOS,
+                  null,
+                  icon: iOS ? CupertinoIcons.person_2_fill : Icons.people,
+                );
+              } else if (!hideContactInfo && widget.handle == null && userAvatarPath != null) {
                 dynamic file = File(userAvatarPath);
                 return CircleAvatar(
                   key: ValueKey(userAvatarPath),

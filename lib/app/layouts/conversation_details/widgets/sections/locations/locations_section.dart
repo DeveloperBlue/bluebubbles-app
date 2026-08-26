@@ -4,6 +4,7 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/interactive/url_preview.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
@@ -11,7 +12,6 @@ import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -22,6 +22,7 @@ class LocationsSection extends StatefulWidget {
   final bool isLoading;
   final bool fullPage;
   final AttachmentFiltersState filters;
+  final VoidCallback? onClearFilters;
 
   const LocationsSection({
     super.key,
@@ -30,6 +31,7 @@ class LocationsSection extends StatefulWidget {
     this.isLoading = false,
     this.fullPage = false,
     this.filters = const AttachmentFiltersState(),
+    this.onClearFilters,
   });
 
   @override
@@ -48,6 +50,7 @@ class _LocationsSectionState extends State<LocationsSection> {
       typeFilter: FileTypeFilter.all,
       senderFilter: widget.filters.senderFilter,
       sinceDate: widget.filters.sinceDate,
+      bookmarkedOnly: widget.filters.bookmarkedOnly,
     );
   }
 
@@ -148,17 +151,11 @@ class _LocationsSectionState extends State<LocationsSection> {
           )
         else if (_displayedLocations.isEmpty)
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 20.0),
-              child: Center(
-                child: Text(
-                  widget.locations.isEmpty ? "No locations" : "No matching locations",
-                  style: context.theme.textTheme.bodyMedium!.copyWith(
-                    color: context.theme.colorScheme.outline,
+            child: widget.fullPage && widget.locations.isNotEmpty && widget.onClearFilters != null
+                ? AttachmentSectionEmpty.noFilterResults(onClearFilters: widget.onClearFilters!)
+                : AttachmentSectionEmpty(
+                    message: widget.locations.isEmpty ? "No locations" : "No matching locations",
                   ),
-                ),
-              ),
-            ),
           )
         else ...[
           SliverPadding(

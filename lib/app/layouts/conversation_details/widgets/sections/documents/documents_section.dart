@@ -4,6 +4,7 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/documents/documents_search_helper.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/media_gallery_card.dart';
 import 'package:bluebubbles/app/layouts/conversation_list/pages/search/conversation_search_field.dart';
@@ -22,6 +23,7 @@ class DocumentsSection extends StatefulWidget {
   final bool fullPage;
   final int? crossAxisCount;
   final AttachmentFiltersState filters;
+  final VoidCallback? onClearFilters;
 
   const DocumentsSection({
     super.key,
@@ -31,6 +33,7 @@ class DocumentsSection extends StatefulWidget {
     this.fullPage = false,
     this.crossAxisCount,
     this.filters = const AttachmentFiltersState(),
+    this.onClearFilters,
   });
 
   @override
@@ -50,6 +53,7 @@ class _DocumentsSectionState extends State<DocumentsSection> with ThemeHelpers {
       typeFilter: widget.filters.fileTypeFilter,
       senderFilter: widget.filters.senderFilter,
       sinceDate: widget.filters.sinceDate,
+      bookmarkedOnly: widget.filters.bookmarkedOnly,
     );
   }
 
@@ -145,21 +149,17 @@ class _DocumentsSectionState extends State<DocumentsSection> with ThemeHelpers {
           )
         else if (_displayedDocs.isEmpty)
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 20.0),
-              child: Center(
-                child: Text(
-                  widget.docs.isEmpty ? "No files" : "No matching files",
-                  style: context.theme.textTheme.bodyMedium!.copyWith(
-                    color: context.theme.colorScheme.outline,
+            child: widget.fullPage && widget.docs.isNotEmpty && _filteredDocs.isEmpty && widget.onClearFilters != null
+                ? AttachmentSectionEmpty.noFilterResults(onClearFilters: widget.onClearFilters!)
+                : AttachmentSectionEmpty(
+                    message: widget.docs.isEmpty ? "No files" : "No matching files",
                   ),
-                ),
-              ),
-            ),
           )
         else ...[
           SliverPadding(
-            padding: attachmentSectionListPadding(),
+            padding: attachmentSectionListPadding(
+              top: widget.fullPage ? 10 : 0,
+            ),
             sliver: SliverGrid(
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: _gridCrossAxisCount,

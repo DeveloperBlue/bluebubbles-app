@@ -4,6 +4,7 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/media_gallery_card.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/media/media_filter_selector.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -22,9 +23,12 @@ class MediaGridSection extends StatefulWidget {
   final bool fullPage;
   final int? crossAxisCount;
   final MediaFilter mediaFilter;
+  final PhotoSubfilter photoSubfilter;
   final MediaSenderFilter senderFilter;
   final DateTime? sinceDate;
+  final bool bookmarkedOnly;
   final ValueChanged<MediaFilter>? onMediaFilterChanged;
+  final VoidCallback? onClearFilters;
   final bool showSenderAvatar;
 
   /// Optional per-cell overlay (e.g. collection tapbacks); clips thumbnail only so overlays can overflow.
@@ -39,9 +43,12 @@ class MediaGridSection extends StatefulWidget {
     this.fullPage = false,
     this.crossAxisCount,
     this.mediaFilter = MediaFilter.all,
+    this.photoSubfilter = PhotoSubfilter.all,
     this.senderFilter = const MediaSenderFilter.any(),
     this.sinceDate,
+    this.bookmarkedOnly = false,
     this.onMediaFilterChanged,
+    this.onClearFilters,
     this.showSenderAvatar = true,
     this.cellOverlayBuilder,
   });
@@ -58,8 +65,10 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
   List<Attachment> get _filteredMedia => applyMediaFilters(
         widget.media,
         typeFilter: widget.mediaFilter,
+        photoSubfilter: widget.photoSubfilter,
         senderFilter: widget.senderFilter,
         sinceDate: widget.sinceDate,
+        bookmarkedOnly: widget.bookmarkedOnly,
       );
 
   @override
@@ -77,10 +86,16 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
     if (oldWidget.mediaFilter != widget.mediaFilter) {
       _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
     }
+    if (oldWidget.photoSubfilter != widget.photoSubfilter) {
+      _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
+    }
     if (oldWidget.senderFilter != widget.senderFilter) {
       _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
     }
     if (oldWidget.sinceDate != widget.sinceDate) {
+      _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
+    }
+    if (oldWidget.bookmarkedOnly != widget.bookmarkedOnly) {
       _displayCount = widget.fullPage ? _chunkSize : kAttachmentPreviewLimit;
     }
   }
@@ -229,17 +244,9 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
         )
       else if (_filteredMedia.isEmpty)
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 20.0),
-            child: Center(
-              child: Text(
-                widget.fullPage ? widget.mediaFilter.emptyMessage : "No photos or videos",
-                style: context.theme.textTheme.bodyMedium!.copyWith(
-                  color: context.theme.colorScheme.outline,
-                ),
-              ),
-            ),
-          ),
+          child: widget.fullPage && widget.media.isNotEmpty && widget.onClearFilters != null
+              ? AttachmentSectionEmpty.noFilterResults(onClearFilters: widget.onClearFilters!)
+              : const AttachmentSectionEmpty(message: "No photos or videos"),
         )
       else ...[
         SliverPadding(

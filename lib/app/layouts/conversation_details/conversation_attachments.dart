@@ -71,15 +71,22 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
         final filtered = applyMediaFilters(
           media,
           typeFilter: filters.mediaFilter,
+          photoSubfilter: filters.photoSubfilter,
           senderFilter: filters.senderFilter,
           sinceDate: filters.sinceDate,
+          bookmarkedOnly: filters.bookmarkedOnly,
         );
         selected.removeWhere((guid) => !filtered.any((e) => e.guid != null && e.guid == guid));
       }
     });
   }
 
-  void _onMediaFilterChanged(MediaFilter filter) => _onFiltersChanged(_filters.copyWith(mediaFilter: filter));
+  void _onMediaFilterChanged(MediaFilter filter) => _onFiltersChanged(_filters.copyWith(
+        mediaFilter: filter,
+        photoSubfilter: filter == MediaFilter.images ? _filters.photoSubfilter : PhotoSubfilter.all,
+      ));
+
+  void _clearFilters() => _onFiltersChanged(const AttachmentFiltersState());
 
   @override
   void initState() {
@@ -134,7 +141,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             initialHeader: null,
             iosSubtitle: iosSubtitle,
             materialSubtitle: materialSubtitle,
-            actions: _buildAppBarActions(context, chatDetailTheme.tileColor),
+            actions: _buildAppBarActions(context),
             bodySlivers: [
               if (isLoadingAttachments)
                 SliverToBoxAdapter(
@@ -163,9 +170,12 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             isLoading: isLoadingAttachments,
             fullPage: true,
             mediaFilter: _filters.mediaFilter,
+            photoSubfilter: _filters.photoSubfilter,
             senderFilter: _filters.senderFilter,
             sinceDate: _filters.sinceDate,
+            bookmarkedOnly: _filters.bookmarkedOnly,
             onMediaFilterChanged: _onMediaFilterChanged,
+            onClearFilters: _clearFilters,
           ),
         ];
       case AttachmentSectionType.links:
@@ -175,6 +185,8 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             fullPage: true,
             senderFilter: _filters.senderFilter,
             sinceDate: _filters.sinceDate,
+            bookmarkedOnly: _filters.bookmarkedOnly,
+            onClearFilters: _clearFilters,
           ),
         ];
       case AttachmentSectionType.locations:
@@ -185,6 +197,7 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             isLoading: isLoadingAttachments,
             fullPage: true,
             filters: _filters,
+            onClearFilters: _clearFilters,
           ),
         ];
       case AttachmentSectionType.documents:
@@ -195,12 +208,13 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             isLoading: isLoadingAttachments,
             fullPage: true,
             filters: _filters,
+            onClearFilters: _clearFilters,
           ),
         ];
     }
   }
 
-  List<Widget> _buildAppBarActions(BuildContext context, Color scaffoldTileColor) {
+  List<Widget> _buildAppBarActions(BuildContext context) {
     switch (widget.section) {
       case AttachmentSectionType.media:
         return [
@@ -210,7 +224,6 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             onPressed: () => showAttachmentFiltersSheet(
               context,
               chat: widget.chat,
-              tileColor: scaffoldTileColor,
               filters: _filters,
               onChanged: _onFiltersChanged,
               typeSection: AttachmentFiltersTypeSection.media,
@@ -252,7 +265,6 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             onPressed: () => showAttachmentFiltersSheet(
               context,
               chat: widget.chat,
-              tileColor: scaffoldTileColor,
               filters: _filters,
               onChanged: _onFiltersChanged,
               typeSection: AttachmentFiltersTypeSection.none,
@@ -267,7 +279,6 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             onPressed: () => showAttachmentFiltersSheet(
               context,
               chat: widget.chat,
-              tileColor: scaffoldTileColor,
               filters: _filters,
               onChanged: _onFiltersChanged,
               typeSection: AttachmentFiltersTypeSection.files,
@@ -282,7 +293,6 @@ class _ConversationAttachmentsState extends State<ConversationAttachments> with 
             onPressed: () => showAttachmentFiltersSheet(
               context,
               chat: widget.chat,
-              tileColor: scaffoldTileColor,
               filters: _filters,
               onChanged: _onFiltersChanged,
               typeSection: AttachmentFiltersTypeSection.none,
