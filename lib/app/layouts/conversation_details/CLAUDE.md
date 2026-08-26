@@ -36,11 +36,12 @@ of the iOS widgets below based on `SettingsSvc.settings.skin.value`. See
 **Shared Media**
 - `attachment_section_header.dart` — section label + "Show more" action
 - `media_gallery_card.dart` — tappable media card → opens `FullscreenMedia`
+- `details_message_popup_binder.dart` — long-press / right-click → message popup (`MessagePopupOrigin.details`)
 - `attachments_loader.dart` — attachment pagination and caching
 - `filters/media_filters_sheet.dart` — shared filters bottom sheet
 
 **Shared Content (`sections/`)**
-- `sections/media/` — images & videos grid + inline type selector
-- `sections/links/` — shared URLs list + search helper
-- `sections/documents/` — shared files list + search helper
-- `sections/locations/` — shared location messages list
+- `sections/media/` — images & videos grid + inline type selector; long-press opens the message popup
+- `sections/links/` — shared URLs list + search helper; long-press opens the message popup
+- `sections/documents/` — shared files list + search helper; long-press opens the message popup
+- `sections/locations/` — shared location messages list; long-press opens the message popup

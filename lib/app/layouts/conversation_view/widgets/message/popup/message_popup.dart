@@ -35,7 +35,7 @@ import 'package:sprung/sprung.dart';
 import 'package:universal_io/io.dart';
 
 export 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/message_popup_action_context.dart'
-    show MessagePopupServerDetails;
+    show MessagePopupServerDetails, MessagePopupOrigin;
 
 class MessagePopup extends StatefulWidget {
   final Offset childPosition;
@@ -47,6 +47,11 @@ class MessagePopup extends StatefulWidget {
   final MessagePopupServerDetails serverDetails;
   final Function([String? type, int? part]) sendTapback;
   final BuildContext? Function() widthContext;
+  final MessagePopupOrigin origin;
+  final RxList<String>? detailsSelected;
+  final String? detailsAttachmentGuid;
+  final VoidCallback? popToConversation;
+  final ValueChanged<Message>? onMessageDeleted;
 
   const MessagePopup({
     super.key,
@@ -59,6 +64,11 @@ class MessagePopup extends StatefulWidget {
     required this.serverDetails,
     required this.sendTapback,
     required this.widthContext,
+    this.origin = MessagePopupOrigin.conversation,
+    this.detailsSelected,
+    this.detailsAttachmentGuid,
+    this.popToConversation,
+    this.onMessageDeleted,
   });
 
   @override
@@ -130,6 +140,8 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
 
   BuildContext get widthContext => widget.widthContext.call() ?? context;
 
+  bool get showTapbacks => widget.origin.usesConversationChrome;
+
   @override
   void initState() {
     super.initState();
@@ -145,15 +157,17 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final measuredSize = _childKey.currentContext?.size;
       currentlySelectedReaction = null;
-      reactions = getUniqueReactionMessages(message.associatedMessages
-          .where((e) =>
-              ReactionTypes.toList().contains(e.associatedMessageType?.replaceAll("-", "")) &&
-              (e.associatedMessagePart ?? 0) == part.part)
-          .toList());
-      final self = reactions.firstWhereOrNull((e) => e.isFromMe!)?.associatedMessageType;
-      if (!(self?.contains("-") ?? true)) {
-        selfReaction = self;
-        currentlySelectedReaction = selfReaction;
+      if (showTapbacks) {
+        reactions = getUniqueReactionMessages(message.associatedMessages
+            .where((e) =>
+                ReactionTypes.toList().contains(e.associatedMessageType?.replaceAll("-", "")) &&
+                (e.associatedMessagePart ?? 0) == part.part)
+            .toList());
+        final self = reactions.firstWhereOrNull((e) => e.isFromMe!)?.associatedMessageType;
+        if (!(self?.contains("-") ?? true)) {
+          selfReaction = self;
+          currentlySelectedReaction = selfReaction;
+        }
       }
       setState(() {
         if (iOS) {
@@ -228,6 +242,20 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
     return preferredLeft.clamp(margin, maxLeft).toDouble();
   }
 
+  /// Menu width used by the iOS action sheet. Capped so it can sit fully on the overlay.
+  double _detailsMenuWidth(double overlayWidth) {
+    final paneWidth = NavigationSvc.width(widthContext);
+    final preferred = min(max(paneWidth * 3 / 5, 200.0), paneWidth * 4 / 5);
+    return min(preferred, max(0.0, overlayWidth - 30));
+  }
+
+  /// Keep [preferredLeft] on-screen given [width] in an overlay of [overlayWidth].
+  double _clampedLeft(double preferredLeft, double width, double overlayWidth, {double padding = 15}) {
+    final maxLeft = overlayWidth - padding - width;
+    if (maxLeft <= padding) return padding;
+    return preferredLeft.clamp(padding, maxLeft).toDouble();
+  }
+
   @override
   Widget build(BuildContext context) {
     // Decide whether the tapback row needs to wrap to a second line by comparing its actual
@@ -235,29 +263,63 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
     // real horizontal space available at the picker's anchor position, rather than guessing from
     // overall screen width. widget.childPosition.dx already reflects any avatar space the bubble
     // was pushed past, so no avatar/group special-casing is needed here.
-    final double screenWidth = NavigationSvc.width(widthContext);
-    const double reactionPickerEdgeMargin = 15;
-    final double reactionPickerAvailableWidth = message.isFromMe!
-        ? screenWidth - reactionPickerEdgeMargin - reactionPickerEdgeMargin
-        : screenWidth - (widget.childPosition.dx + 10) - reactionPickerEdgeMargin;
-    final double reactionItemWidth = iOS ? 47.0 : 44.0; // icon/emoji + its fixed padding, see item build below
-    // + container padding
-    final double reactionRowContentWidth = reactionItemWidth * ReactionTypes.toList().length + 10;
-    bool narrowScreen = reactionRowContentWidth > reactionPickerAvailableWidth;
+    final overlayWidth = MediaQuery.sizeOf(context).width;
+    final menuWidth = _detailsMenuWidth(overlayWidth);
     final isFromMe = message.isFromMe!;
-    final clampedLayout = isFromMe ? null : _clampedHorizontalLayout(screenWidth: screenWidth, narrowScreen: narrowScreen);
-    final clampedOverlayLeft = clampedLayout?.clampedOverlayLeft;
-    // From-me: pin the preview's right edge to the cell's right edge so growth stays on-screen.
-    // Received: left-anchor, then clamp using measured/estimated preview width.
-    const margin = 15.0;
-    final double? previewRight =
-        isFromMe ? max(margin, screenWidth - widget.childPosition.dx - widget.size.width) : null;
-    final double? previewLeft = isFromMe
-        ? null
-        : _clampReceivedPreviewLeft(
-            screenWidth: screenWidth,
-            preferredLeft: clampedLayout?.clampedChildLeft ?? widget.childPosition.dx,
-          );
+    final double screenWidth = NavigationSvc.width(widthContext);
+
+    bool narrowScreen = false;
+    if (showTapbacks) {
+      const double reactionPickerEdgeMargin = 15;
+      final double reactionPickerAvailableWidth = isFromMe
+          ? screenWidth - reactionPickerEdgeMargin - reactionPickerEdgeMargin
+          : screenWidth - (widget.childPosition.dx + 10) - reactionPickerEdgeMargin;
+      final double reactionItemWidth = iOS ? 47.0 : 44.0; // icon/emoji + its fixed padding, see item build below
+      // + container padding
+      final double reactionRowContentWidth = reactionItemWidth * ReactionTypes.toList().length + 10;
+      narrowScreen = reactionRowContentWidth > reactionPickerAvailableWidth;
+    }
+
+    late final Alignment popupAlign;
+    late final double preferredMenuLeft;
+    late final double? previewLeft;
+    late final double? previewRight;
+    late final double? clampedOverlayLeft;
+    if (widget.origin.usesGridMenuLayout) {
+      // Left / center / right third of the overlay — so a 3-column tile stays with its column.
+      final childLeft = _clampedLeft(widget.childPosition.dx, widget.size.width, overlayWidth, padding: 0);
+      final tileCenter = childLeft + widget.size.width / 2;
+      if (tileCenter < overlayWidth / 3) {
+        popupAlign = Alignment.centerLeft;
+        preferredMenuLeft = childLeft;
+      } else if (tileCenter > overlayWidth * 2 / 3) {
+        popupAlign = Alignment.centerRight;
+        preferredMenuLeft = childLeft + widget.size.width - menuWidth;
+      } else {
+        popupAlign = Alignment.center;
+        preferredMenuLeft = childLeft + (widget.size.width - menuWidth) / 2;
+      }
+      previewLeft = childLeft;
+      previewRight = null;
+      clampedOverlayLeft = null;
+    } else {
+      popupAlign = isFromMe ? Alignment.centerRight : Alignment.centerLeft;
+      preferredMenuLeft = isFromMe ? overlayWidth - 15 - menuWidth : widget.childPosition.dx + 10;
+      final clampedLayout =
+          isFromMe ? null : _clampedHorizontalLayout(screenWidth: screenWidth, narrowScreen: narrowScreen);
+      clampedOverlayLeft = clampedLayout?.clampedOverlayLeft;
+      // From-me: pin the preview's right edge to the cell's right edge so growth stays on-screen.
+      // Received: left-anchor, then clamp using measured/estimated preview width.
+      const margin = 15.0;
+      previewRight = isFromMe ? max(margin, screenWidth - widget.childPosition.dx - widget.size.width) : null;
+      previewLeft = isFromMe
+          ? null
+          : _clampReceivedPreviewLeft(
+              screenWidth: screenWidth,
+              preferredLeft: clampedLayout?.clampedChildLeft ?? widget.childPosition.dx,
+            );
+    }
+    final menuLeft = _clampedLeft(preferredMenuLeft, menuWidth, overlayWidth);
 
     return Theme(
       data: context.theme.copyWith(
@@ -359,25 +421,20 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                               // reacts to shared state by doing work (URL
                               // preview refreshes, say) knows not to — this
                               // copy and the real bubble both see every signal.
-                              child: MessageCloneScope(
-                                child: MessageStateScope(
-                                  messageState: widget.controller,
-                                  child: widget.child,
-                                ),
-                              ),
+                              child: _buildOverlayChild(),
                             ),
                           ),
                         ),
                         builder: (context, size, child) {
                           return Transform.scale(
                             scale: size.clamp(1, double.infinity),
-                            alignment: isFromMe ? Alignment.centerRight : Alignment.centerLeft,
+                            alignment: popupAlign,
                             child: child,
                           );
                         },
                       ),
                     ),
-                  if (iOS)
+                  if (iOS && showTapbacks)
                     Positioned(
                       top: 40,
                       left: 15,
@@ -389,7 +446,11 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                         child: reactions.isNotEmpty ? ReactionDetails(reactions: reactions) : const SizedBox.shrink(),
                       ),
                     ),
-                  if (SettingsSvc.settings.enablePrivateAPI.value && isSent && minSierra && chat.isIMessage)
+                  if (showTapbacks &&
+                      SettingsSvc.settings.enablePrivateAPI.value &&
+                      isSent &&
+                      minSierra &&
+                      chat.isIMessage)
                     Positioned(
                       bottom: (iOS
                               ? itemHeight * numberToShow + 35 + (_measuredChildHeight ?? widget.size.height)
@@ -507,8 +568,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                     ),
                   if (iOS)
                     Positioned(
-                      right: isFromMe ? 15 : null,
-                      left: !isFromMe ? clampedOverlayLeft : null,
+                      left: menuLeft,
                       bottom: 30,
                       child: TweenAnimationBuilder<double>(
                         tween: Tween<double>(begin: 0.8, end: 1),
@@ -524,7 +584,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const SizedBox(height: 5),
-                              buildDetailsMenu(context),
+                              buildDetailsMenu(context, menuWidth),
                             ],
                           ),
                         ),
@@ -577,6 +637,33 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
       showSnack: showSnackbar,
       dmChat: dmChat,
       isEmbeddedMedia: isEmbeddedMedia,
+      origin: widget.origin,
+      detailsSelected: widget.detailsSelected,
+      detailsAttachmentGuid: widget.detailsAttachmentGuid,
+      popToConversation: widget.popToConversation,
+      onMessageDeleted: widget.onMessageDeleted,
+    );
+  }
+
+  /// Cloned bubble/tile for the iOS overlay. Details origin wraps the child in
+  /// [IgnorePointer] (see [showMessagePopup]), so taps are handled here to open
+  /// the fullscreen viewer for downloaded image/video attachments.
+  Widget _buildOverlayChild() {
+    final clone = MessageCloneScope(
+      child: MessageStateScope(
+        messageState: widget.controller,
+        child: widget.child,
+      ),
+    );
+    if (!widget.origin.usesDetailsMenuGates) return clone;
+    return GestureDetector(
+      // IgnorePointer on the clone (showMessagePopup) makes the subtree miss
+      // hit tests; opaque so this detector still receives the tap.
+      behavior: HitTestBehavior.opaque,
+      onTap: () => popup_media_actions.openFullscreenFromOverlay(
+        _buildActionContext(DetailsMenuAction.OpenInImageViewer),
+      ),
+      child: clone,
     );
   }
 
@@ -639,7 +726,11 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
           onTap: () => popup_media_actions.downloadLivePhoto(_buildActionContext(DetailsMenuAction.SaveLivePhoto)),
           action: DetailsMenuAction.SaveLivePhoto,
         ),
-      if (chat.isGroup && !message.isFromMe! && dmChat != null && !LifecycleSvc.isBubble)
+      if (chat.isGroup &&
+          !message.isFromMe! &&
+          dmChat != null &&
+          !LifecycleSvc.isBubble &&
+          widget.origin.usesConversationChrome)
         DetailsMenuActionWidget(
           onTap: () => popup_navigation_actions.openDm(_buildActionContext(DetailsMenuAction.OpenDirectMessage)),
           action: DetailsMenuAction.OpenDirectMessage,
@@ -661,7 +752,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
           onTap: () => popup_media_actions.redownload(_buildActionContext(DetailsMenuAction.ReDownloadFromServer)),
           action: DetailsMenuAction.ReDownloadFromServer,
         ),
-      if (!kIsWeb && !kIsDesktop)
+      if (!kIsWeb && !kIsDesktop && widget.origin.usesConversationChrome)
         DetailsMenuActionWidget(
           onTap: () => popup_message_actions.remindLater(_buildActionContext(DetailsMenuAction.RemindLater)),
           action: DetailsMenuAction.RemindLater,
@@ -670,7 +761,8 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
           !kIsDesktop &&
           !message.isFromMe! &&
           message.handleRelation.target != null &&
-          message.handleRelation.target!.contactsV2.isEmpty)
+          message.handleRelation.target!.contactsV2.isEmpty &&
+          widget.origin.usesConversationChrome)
         DetailsMenuActionWidget(
           onTap: () => popup_message_actions.createContact(_buildActionContext(DetailsMenuAction.CreateContact)),
           action: DetailsMenuAction.CreateContact,
@@ -678,7 +770,8 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
       if (SettingsSvc.serverDetails.isMinVentura &&
           message.isFromMe! &&
           !widget.controller.isSending.value &&
-          SettingsSvc.serverDetails.supportsEditAndUnsend)
+          SettingsSvc.serverDetails.supportsEditAndUnsend &&
+          widget.origin.usesConversationChrome)
         DetailsMenuActionWidget(
           onTap: () => popup_message_actions.unsend(_buildActionContext(DetailsMenuAction.UndoSend)),
           customTitle: canUnsend ? 'Undo Send' : 'Undo Send (too old)',
@@ -706,7 +799,11 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
           onTap: () => popup_navigation_actions.forward(_buildActionContext(DetailsMenuAction.Forward)),
           action: DetailsMenuAction.Forward,
         ),
-      if (chat.isGroup && !message.isFromMe! && dmChat == null && !LifecycleSvc.isBubble)
+      if (chat.isGroup &&
+          !message.isFromMe! &&
+          dmChat == null &&
+          !LifecycleSvc.isBubble &&
+          widget.origin.usesConversationChrome)
         DetailsMenuActionWidget(
           onTap: () => popup_navigation_actions.newConvo(_buildActionContext(DetailsMenuAction.StartConversation)),
           action: DetailsMenuAction.StartConversation,
@@ -725,10 +822,11 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
         action: DetailsMenuAction.Bookmark,
         customTitle: message.isBookmarked ? "Remove Bookmark" : "Add Bookmark",
       ),
-      DetailsMenuActionWidget(
-        onTap: () => popup_message_actions.selectMultiple(_buildActionContext(DetailsMenuAction.SelectMultiple)),
-        action: DetailsMenuAction.SelectMultiple,
-      ),
+      if (!widget.origin.usesDetailsMenuGates || widget.detailsSelected != null)
+        DetailsMenuActionWidget(
+          onTap: () => popup_message_actions.selectMultiple(_buildActionContext(DetailsMenuAction.SelectMultiple)),
+          action: DetailsMenuAction.SelectMultiple,
+        ),
       DetailsMenuActionWidget(
         onTap: () => popup_message_actions.messageInfo(_buildActionContext(DetailsMenuAction.MessageInfo)),
         action: DetailsMenuAction.MessageInfo,
@@ -743,10 +841,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
         .compareTo(SettingsSvc.settings.detailsMenuActions.indexOf(b.action)));
   }
 
-  Widget buildDetailsMenu(BuildContext context) {
-    double maxMenuWidth =
-        min(max(NavigationSvc.width(widthContext) * 3 / 5, 200), NavigationSvc.width(widthContext) * 4 / 5);
-
+  Widget buildDetailsMenu(BuildContext context, double menuWidth) {
     List<DetailsMenuActionWidget> allActions = _allActions;
 
     return ClipRRect(
@@ -755,7 +850,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Container(
           color: context.theme.colorScheme.surfaceContainerHighest.withAlpha(150),
-          width: maxMenuWidth,
+          width: menuWidth,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,

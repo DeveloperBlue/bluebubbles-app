@@ -4,9 +4,10 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/details_message_popup_binder.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
-import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/documents/documents_search_helper.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/media_gallery_card.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/documents/documents_search_helper.dart';
 import 'package:bluebubbles/app/layouts/conversation_list/pages/search/conversation_search_field.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
@@ -100,6 +101,29 @@ class _DocumentsSectionState extends State<DocumentsSection> with ThemeHelpers {
     _loadingMore = false;
   }
 
+  void _onMessageDeleted(Message message) {
+    final guid = message.guid;
+    widget.docs.removeWhere((a) {
+      final parent = a.message.target;
+      return parent != null && (identical(parent, message) || (guid != null && parent.guid == guid));
+    });
+    setState(() {});
+  }
+
+  Widget _buildDocCard(Attachment attachment) {
+    return DetailsMessagePopupBinder(
+      chat: widget.chat,
+      attachment: attachment,
+      popAttachmentsRoute: widget.fullPage,
+      onMessageDeleted: _onMessageDeleted,
+      child: MediaGalleryCard(
+        attachment: attachment,
+        showJumpToMessage: true,
+        galleryAttachments: _displayedDocs,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (kIsWeb) {
@@ -168,11 +192,7 @@ class _DocumentsSectionState extends State<DocumentsSection> with ThemeHelpers {
                 childAspectRatio: 1.75,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, int index) => MediaGalleryCard(
-                  attachment: _displayedDocs[index],
-                  showJumpToMessage: true,
-                  galleryAttachments: _displayedDocs,
-                ),
+                (context, int index) => _buildDocCard(_displayedDocs[index]),
                 childCount: _visibleCount,
               ),
             ),

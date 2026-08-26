@@ -6,9 +6,10 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 
 | File | Purpose |
 |------|---------|
-| `message_popup_holder.dart` | `GestureDetector` wrapper inside message bubbles; triggers popup presentation |
+| `show_message_popup.dart` | Shared presenter (`showMessagePopup`) plus `PopupScope`; pushes the overlay route |
+| `message_popup_holder.dart` | `GestureDetector` wrapper inside message bubbles; calls `showMessagePopup`. `enableGestures: false` defers to collection cards |
 | `message_popup.dart` | Core popup layout/composition and action availability rules |
-| `message_popup_action_context.dart` | Shared typed context passed to extracted action functions |
+| `message_popup_action_context.dart` | Shared typed context passed to extracted action functions; `MessagePopupOrigin` |
 | `details_menu_action.dart` | Individual menu action row widget |
 | `reaction_picker_clipper.dart` | `CustomClipper` for tapback picker shape |
 | `actions/media_actions.dart` | Attachment/media actions (save/open/share/copy/redownload) |
@@ -17,22 +18,35 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 | `actions/message_actions.dart` | Message lifecycle actions (edit/unsend/delete/bookmark/remind/info/etc.) |
 | `widgets/reaction_details.dart` | Reactions preview widget rendered at top of popup |
 
+## MessagePopupOrigin
+
+`conversation` (default) shows tapbacks, Material selection highlighting, and composer focus handling.
+`details` hides tapback chrome (picker, `ReactionDetails`, placeholder), wraps the overlay child in `IgnorePointer`, and skips composer/selection side effects.
+
+Action routing by origin:
+- Reply / Edit / View Thread call `dismissForThread()` (close popup, then `popToConversation` when origin is details).
+- Forward / Open DM / New conversation also `dismissForThread()` so they do not stack on ConversationDetails.
+- Select Multiple from details toggles `detailsSelected` GUIDs when that list is provided; the action is omitted when origin is details and `detailsSelected` is null.
+- Delete from details invokes `onMessageDeleted` after a successful delete and stays on details.
+
 ## MessagePopupActionContext Contract
 
 `MessagePopupActionContext` carries the data/dependencies needed by reusable action handlers:
-- UI context: `context`, `widthContext`, `popDetails`, `showSnack`
+- UI context: `context`, `widthContext`, `popDetails`, `showSnack`, `dismissForThread`
 - Message scope: `messageState`, `message`, `part`, `chat`, `service`
 - Controller scope: `cvController`
 - Capability flags: `serverDetails`, `isEmbeddedMedia`
 - Related entities: `dmChat`
 - Action metadata: `action`
+- Origin: `origin`, `detailsSelected`, `detailsAttachmentGuid`, `popToConversation`, `onMessageDeleted`
 
 ## How It Works
 
-1. `MessagePopupHolder` triggers `showMessagePopup(...)` from a message bubble.
-2. `MessagePopup` computes action availability and ordering in `_allActions`.
-3. Each menu action callback builds a `MessagePopupActionContext` and dispatches into `actions/*.dart`.
-4. Action functions own behavior; `message_popup.dart` owns visibility conditions and layout.
+1. `MessagePopupHolder` (conversation) or `DetailsMessagePopupBinder` (details media, files, links, and locations) measures the child and calls `showMessagePopup(...)`.
+2. `showMessagePopup` captures theme/`ChatStateScope` and pushes `MessagePopup` inside `PopupScope`.
+3. `MessagePopup` computes action availability and ordering in `_allActions`.
+4. Each menu action callback builds a `MessagePopupActionContext` and dispatches into `actions/*.dart`.
+5. Action functions own behavior; `message_popup.dart` owns visibility conditions and layout.
 
 ## Adding a New Popup Action
 

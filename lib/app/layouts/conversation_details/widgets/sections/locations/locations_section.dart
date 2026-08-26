@@ -4,6 +4,7 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/details_message_popup_binder.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/interactive/url_preview.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -77,35 +78,49 @@ class _LocationsSectionState extends State<LocationsSection> {
     _loadingMore = false;
   }
 
+  void _onMessageDeleted(Message message) {
+    final guid = message.guid;
+    widget.locations.removeWhere((a) {
+      final parent = a.message.target;
+      return parent != null && (identical(parent, message) || (guid != null && parent.guid == guid));
+    });
+    setState(() {});
+  }
+
   Widget _buildLocationTile(BuildContext context, int index) {
-    if (AttachmentsSvc.getContent(_displayedLocations[index]) is! PlatformFile) {
+    final attachment = _displayedLocations[index];
+    if (AttachmentsSvc.getContent(attachment) is! PlatformFile) {
       return const Text("Failed to load location!");
     }
     const radius = M3EShapes.lg;
-    return Material(
-      color: context.tileColor.themeLightenOrDarken(context, 6),
-      borderRadius: BorderRadius.circular(radius),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+    return DetailsMessagePopupBinder(
+      chat: widget.chat,
+      attachment: attachment,
+      popAttachmentsRoute: widget.fullPage,
+      onMessageDeleted: _onMessageDeleted,
+      child: Material(
+        color: context.tileColor.themeLightenOrDarken(context, 6),
         borderRadius: BorderRadius.circular(radius),
-        onTap: () async {
-          final attachment = _displayedLocations[index];
-          if (attachment.mimeType?.contains("location") ?? false) {
-            final location = attachment.transferName;
-            if (location != null) {
-              final uri = Uri.parse("https://maps.google.com/?q=$location");
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(radius),
+          onTap: () async {
+            if (attachment.mimeType?.contains("location") ?? false) {
+              final location = attachment.transferName;
+              if (location != null) {
+                final uri = Uri.parse("https://maps.google.com/?q=$location");
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
             }
-          }
-        },
-        child: Center(
-          child: UrlPreview(
-            data: UrlPreviewData(
-              title:
-                  "Location from ${DateFormat.yMd().format(_displayedLocations[index].message.target!.dateCreated!)}",
-              siteName: "Tap to open",
+          },
+          child: Center(
+            child: UrlPreview(
+              data: UrlPreviewData(
+                title: "Location from ${DateFormat.yMd().format(attachment.message.target!.dateCreated!)}",
+                siteName: "Tap to open",
+              ),
+              file: AttachmentsSvc.getContent(attachment),
             ),
-            file: AttachmentsSvc.getContent(_displayedLocations[index]),
           ),
         ),
       ),

@@ -14,6 +14,7 @@ Reusable widgets composing the conversation details / info panel.
 | `attachment_section_header.dart` | Section label + "Show more" for attachment previews |
 | `attachments_loader.dart` | Loads shared attachments for media/docs/locations |
 | `media_gallery_card.dart` | Tappable thumbnail card for media or file items |
+| `details_message_popup_binder.dart` | Long-press / right-click wrapper that opens the message popup for a details tile |
 
 All four widgets in `sections/` plus `attachment_section_header.dart` and `media_gallery_card.dart`
 take an `expressive` flag (default `false`), threaded from `conversation_details.dart` /
@@ -35,13 +36,15 @@ finishes, and the media grid column count follows the Material window size class
 
 | Path | Purpose |
 |------|---------|
-| `media/media_grid_section.dart` | Photo/video grid (preview + full page) |
+| `media/media_grid_section.dart` | Photo/video grid (preview + full page). Long-press opens the message popup; Select Multiple starts GUID selection |
 | `media/media_filter_selector.dart` | Inline All/Images/Videos segmented control |
-| `links/links_section.dart` | Shared URL link previews |
+| `links/links_section.dart` | Shared URL link previews. Long-press opens the message popup |
 | `links/links_search_helper.dart` | Link search scoring and sort |
-| `documents/documents_section.dart` | Shared files/documents grid |
+| `documents/documents_section.dart` | Shared files/documents grid. Long-press opens the message popup |
 | `documents/documents_search_helper.dart` | File search scoring and sort |
-| `locations/locations_section.dart` | Shared location message cards |
+| `locations/locations_section.dart` | Shared location message cards. Long-press opens the message popup |
+
+Long-press / right-click on media, files, links, and locations opens `DetailsMessagePopupBinder` → `showMessagePopup` (`MessagePopupOrigin.details`, no tapbacks). Tap still opens/launches the item. Media GUID selection is unchanged: while active, tap toggles selection instead. Select Multiple is hidden for files, links, and locations.
 
 ## Related
 - Parent panel: `../CLAUDE.md` (conversation_details)

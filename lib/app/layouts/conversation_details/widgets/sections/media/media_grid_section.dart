@@ -4,9 +4,11 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/details_message_popup_binder.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/media_gallery_card.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/media/media_filter_selector.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/message_popup_action_context.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:flutter/cupertino.dart';
@@ -34,6 +36,14 @@ class MediaGridSection extends StatefulWidget {
   /// Optional per-cell overlay (e.g. collection tapbacks); clips thumbnail only so overlays can overflow.
   final Widget Function(BuildContext context, int index, Attachment attachment)? cellOverlayBuilder;
 
+  /// When set, overrides [fullPage] for popup host-route pops.
+  /// Collection gallery is full-page but sits directly on the conversation, so it passes false.
+  final bool? popAttachmentsRoute;
+
+  /// Popup origin for long-press. Defaults to details; collection gallery uses
+  /// [MessagePopupOrigin.collection].
+  final MessagePopupOrigin popupOrigin;
+
   const MediaGridSection({
     super.key,
     required this.chat,
@@ -51,6 +61,8 @@ class MediaGridSection extends StatefulWidget {
     this.onClearFilters,
     this.showSenderAvatar = true,
     this.cellOverlayBuilder,
+    this.popAttachmentsRoute,
+    this.popupOrigin = MessagePopupOrigin.details,
   });
 
   @override
@@ -119,6 +131,24 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
     _loadingMore = false;
   }
 
+  void _onMessageDeleted(Message message) {
+    final guid = message.guid;
+    widget.media.removeWhere((a) {
+      final parent = a.message.target;
+      return parent != null && (identical(parent, message) || (guid != null && parent.guid == guid));
+    });
+    widget.selected.removeWhere((id) => !widget.media.any((a) => a.guid == id));
+    setState(() {});
+  }
+
+  void _toggleSelected(Attachment attachment) {
+    if (widget.selected.contains(attachment.guid)) {
+      widget.selected.remove(attachment.guid!);
+    } else {
+      widget.selected.add(attachment.guid!);
+    }
+  }
+
   Widget _buildGridItem(BuildContext context, int index) {
     final attachment = _filteredMedia[index];
     final hasOverlay = widget.cellOverlayBuilder != null;
@@ -138,6 +168,34 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
     return Obx(() {
       final isSelected = widget.selected.contains(attachment.guid);
       const motion = M3EMotion.spatialFast;
+      Widget card = thumbnail;
+      if (isSelected || hasOverlay) {
+        card = Stack(
+          alignment: Alignment.center,
+          clipBehavior: hasOverlay ? Clip.none : Clip.hardEdge,
+          children: [
+            card,
+            if (isSelected)
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: context.theme.colorScheme.primary,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(5.0),
+                  child: Icon(
+                    iOS ? CupertinoIcons.check_mark : Icons.check,
+                    color: context.theme.colorScheme.onPrimary,
+                    size: 18,
+                  ),
+                ),
+              ),
+            if (hasOverlay) widget.cellOverlayBuilder!(context, index, attachment),
+          ],
+        );
+      }
+
+      final inSelection = widget.selected.isNotEmpty;
       return AnimatedContainer(
         duration: motion.duration,
         curve: motion.curve,
@@ -148,50 +206,23 @@ class _MediaGridSectionState extends State<MediaGridSection> with ThemeHelpers {
                 borderRadius: BorderRadius.circular(isSelected ? M3EShapes.md : 20),
               ),
         clipBehavior: hasOverlay ? Clip.none : Clip.antiAlias,
-        child: GestureDetector(
-          onTap: widget.selected.isNotEmpty
-              ? () {
-                  if (widget.selected.contains(attachment.guid)) {
-                    widget.selected.remove(attachment.guid!);
-                  } else {
-                    widget.selected.add(attachment.guid!);
-                  }
-                }
-              : null,
-          onLongPress: () {
-            if (widget.selected.contains(attachment.guid)) {
-              widget.selected.remove(attachment.guid!);
-            } else {
-              widget.selected.add(attachment.guid!);
-            }
-          },
-          child: AbsorbPointer(
-            absorbing: widget.selected.isNotEmpty,
-            child: Stack(
-              alignment: Alignment.center,
-              clipBehavior: hasOverlay ? Clip.none : Clip.hardEdge,
-              children: [
-                thumbnail,
-                if (isSelected)
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: context.theme.colorScheme.primary,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(5.0),
-                      child: Icon(
-                        iOS ? CupertinoIcons.check_mark : Icons.check,
-                        color: context.theme.colorScheme.onPrimary,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                if (hasOverlay) widget.cellOverlayBuilder!(context, index, attachment),
-              ],
-            ),
-          ),
-        ),
+        child: inSelection
+            ? GestureDetector(
+                onTap: () => _toggleSelected(attachment),
+                child: AbsorbPointer(
+                  absorbing: true,
+                  child: card,
+                ),
+              )
+            : DetailsMessagePopupBinder(
+                chat: widget.chat,
+                attachment: attachment,
+                selected: widget.selected,
+                popAttachmentsRoute: widget.popAttachmentsRoute ?? widget.fullPage,
+                origin: widget.popupOrigin,
+                onMessageDeleted: _onMessageDeleted,
+                child: card,
+              ),
       );
     });
   }

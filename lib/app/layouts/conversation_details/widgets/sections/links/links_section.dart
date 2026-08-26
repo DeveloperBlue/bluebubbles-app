@@ -4,6 +4,7 @@ import 'package:bluebubbles/app/components/m3e/m3e.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/attachment_section_type.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/conversation_attachments.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/attachment_section_header.dart';
+import 'package:bluebubbles/app/layouts/conversation_details/widgets/details_message_popup_binder.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/filters/attachment_section_empty.dart';
 import 'package:bluebubbles/app/layouts/conversation_details/widgets/sections/links/links_search_helper.dart';
 import 'package:bluebubbles/app/layouts/conversation_list/pages/search/conversation_search_field.dart';
@@ -134,28 +135,41 @@ class _LinksSectionState extends State<LinksSection> with ThemeHelpers {
     _loadingMore = false;
   }
 
+  void _onMessageDeleted(Message message) {
+    final guid = message.guid;
+    links.removeWhere((m) => identical(m, message) || (guid != null && m.guid == guid));
+    setState(() {});
+  }
+
   Widget _buildLinkTile(BuildContext context, int index) {
-    if (_displayedLinks[index].payloadData?.urlData?.firstOrNull == null) {
+    final message = _displayedLinks[index];
+    if (message.payloadData?.urlData?.firstOrNull == null) {
       return const Text("Failed to load link!");
     }
     const radius = M3EShapes.lg;
-    return Material(
-      color: context.tileColor.themeLightenOrDarken(context, 6),
-      borderRadius: BorderRadius.circular(radius),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+    return DetailsMessagePopupBinder(
+      chat: widget.chat,
+      message: message,
+      popAttachmentsRoute: widget.fullPage,
+      onMessageDeleted: _onMessageDeleted,
+      child: Material(
+        color: context.tileColor.themeLightenOrDarken(context, 6),
         borderRadius: BorderRadius.circular(radius),
-        onTap: () async {
-          final data = _displayedLinks[index].payloadData!.urlData!.first;
-          if ((data.url ?? data.originalUrl) == null) return;
-          await launchUrl(
-            Uri.parse((data.url ?? data.originalUrl)!),
-            mode: LaunchMode.externalApplication,
-          );
-        },
-        child: Center(
-          child: UrlPreview(
-            data: _displayedLinks[index].payloadData!.urlData!.first,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(radius),
+          onTap: () async {
+            final data = message.payloadData!.urlData!.first;
+            if ((data.url ?? data.originalUrl) == null) return;
+            await launchUrl(
+              Uri.parse((data.url ?? data.originalUrl)!),
+              mode: LaunchMode.externalApplication,
+            );
+          },
+          child: Center(
+            child: UrlPreview(
+              data: message.payloadData!.urlData!.first,
+            ),
           ),
         ),
       ),
