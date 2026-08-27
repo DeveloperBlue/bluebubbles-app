@@ -1,3 +1,4 @@
+import 'package:bluebubbles/app/components/attachment_preview.dart';
 import 'package:bluebubbles/app/state/chat_state_scope.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
@@ -80,10 +81,19 @@ class _ReplyContent extends StatelessWidget {
   final VoidCallback onClear;
   final VoidCallback onClearWithFocus;
 
+  List<Attachment> get _attachments {
+    if (reply is MessagePart) return reply.attachments;
+    if (reply is Message) return reply.dbAttachments.toList();
+    return message?.dbAttachments.toList() ?? const [];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Obx(() {
       final isIOS = SettingsSvc.settings.skin.value == Skins.iOS;
+      final previewAttachment = AttachmentPreview.firstPreviewableAttachment(_attachments);
+      final showPreview = previewAttachment != null &&
+          AttachmentPreview.canShow(previewAttachment, generateVideoThumbnail: true);
 
       return Container(
         color: context.theme.colorScheme.surfaceContainerHighest,
@@ -94,6 +104,16 @@ class _ReplyContent extends StatelessWidget {
               _CloseButton(
                 icon: CupertinoIcons.xmark_circle_fill,
                 onPressed: onClearWithFocus,
+              ),
+            if (showPreview)
+              Padding(
+                padding: const EdgeInsets.only(right: 8, top: 6, bottom: 6),
+                child: AttachmentPreview(
+                  attachment: previewAttachment,
+                  size: 40,
+                  borderRadius: BorderRadius.circular(6),
+                  generateVideoThumbnail: true,
+                ),
               ),
             Expanded(
               child: _ReplyText(
