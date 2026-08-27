@@ -1,3 +1,4 @@
+import 'package:bluebubbles/app/components/attachment_preview.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/attachment_holder.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/interactive/interactive_holder.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/misc/tail_clipper.dart';
@@ -56,53 +57,93 @@ class _ReplyBubbleState extends State<ReplyBubble> with ThemeHelpers {
     return bubbleColor;
   }
 
+  /// Snippet for the Material/Samsung quoted-reply row. Matches [ReplyHolder]:
+  /// a throwaway [Message] plus the quoted part's attachments so "1 Photo"
+  /// fallbacks work when the thumbnail is missing.
+  String _quotedSnippet(MessagePart? quotedPart) {
+    if (quotedPart == null) {
+      return Message(text: controller.text.value, subject: controller.subject.value).getNotificationText();
+    }
+    final msg = Message(
+      text: quotedPart.text,
+      subject: quotedPart.subject,
+      hasAttachments: quotedPart.attachments.isNotEmpty,
+    )
+      ..dbAttachments.addAll(quotedPart.attachments)
+      ..mergeWith(message);
+    return msg.getNotificationText();
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatGuid = widget.cvController.chat.guid;
     final hasBackground = ChatStateScope.maybeOf(context)?.hasCustomWallpaper ?? false;
     if (!iOS) {
-      final messageText = controller.text.value;
-      String text = Message(text: messageText, subject: controller.subject.value).getNotificationText();
-      return MouseRegion(
-        cursor: MouseCursor.defer,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: NavigationSvc.width(context) * MessageState.maxBubbleSizeFactor - 30,
-            minHeight: 30,
-          ),
-          child: GestureDetector(
-            onTap: () {
-              showReplyThread(context, message, part, MessagesSvc(chatGuid), widget.cvController);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
-              decoration: hasBackground
-                  ? BoxDecoration(
-                      color: context.theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    )
-                  : null,
-              child: Text.rich(
-                TextSpan(children: [
-                  TextSpan(
-                    text: controller.senderDisplayName,
-                    style: context.textTheme.bodyMedium!
-                        .copyWith(fontWeight: FontWeight.w400, color: context.theme.colorScheme.outline),
-                  ),
-                  const TextSpan(text: "\n"),
-                  TextSpan(
-                    text: text,
-                    style: context.textTheme.bodyMedium!.apply(fontSizeFactor: 1.15),
-                  ),
-                ]),
-                style: context.textTheme.labelLarge!.copyWith(color: context.theme.colorScheme.onSurface),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+      return Obx(() {
+        final quotedPart = controller.parts.length > widget.part ? controller.parts[widget.part] : null;
+        final previewAttachment =
+            quotedPart == null ? null : AttachmentPreview.firstPreviewableAttachment(quotedPart.attachments);
+        final showPreview = previewAttachment != null &&
+            AttachmentPreview.canShow(previewAttachment, generateVideoThumbnail: true);
+        final snippet = _quotedSnippet(quotedPart);
+
+        return MouseRegion(
+          cursor: MouseCursor.defer,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: NavigationSvc.width(context) * MessageState.maxBubbleSizeFactor - 30,
+              minHeight: 30,
+            ),
+            child: GestureDetector(
+              onTap: () {
+                showReplyThread(context, message, part, MessagesSvc(chatGuid), widget.cvController);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
+                decoration: hasBackground
+                    ? BoxDecoration(
+                        color: context.theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      )
+                    : null,
+                child: Row(
+                  children: [
+                    if (showPreview)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: AttachmentPreview(
+                          attachment: previewAttachment,
+                          size: 52,
+                          borderRadius: BorderRadius.circular(8),
+                          generateVideoThumbnail: true,
+                        ),
+                      ),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(children: [
+                          TextSpan(
+                            text: controller.senderDisplayName,
+                            style: context.textTheme.bodyMedium!
+                                .copyWith(fontWeight: FontWeight.w400, color: context.theme.colorScheme.outline),
+                          ),
+                          const TextSpan(text: "\n"),
+                          TextSpan(
+                            text: snippet,
+                            style: context.textTheme.bodyMedium!.apply(fontSizeFactor: 1.15),
+                          ),
+                        ]),
+                        style: context.textTheme.labelLarge!.copyWith(color: context.theme.colorScheme.onSurface),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
+        );
+      });
     }
 
     final iOSContent = Padding(
