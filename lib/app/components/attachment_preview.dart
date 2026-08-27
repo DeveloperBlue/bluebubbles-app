@@ -1,3 +1,4 @@
+import 'package:bluebubbles/database/database.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/services/services.dart';
@@ -36,6 +37,55 @@ class AttachmentPreview extends StatefulWidget {
       }
     }
     return null;
+  }
+
+  /// Attachments for [message], re-querying the store when the in-memory
+  /// [Message.dbAttachments] backlink is a stale empty cache.
+  ///
+  /// Chat-list latest messages often hit `getNotificationText()` before the
+  /// attachment rows are linked. ObjectBox caches that empty ToMany, so later
+  /// reads on the same instance stay empty even after the files exist on disk.
+  static List<Attachment> attachmentsFor(Message message, {String? chatGuid}) {
+    if (message.dbAttachments.isNotEmpty) {
+      return List<Attachment>.from(message.dbAttachments);
+    }
+
+    final guid = chatGuid ?? message.chat.target?.guid;
+    if (guid != null && message.guid != null) {
+      final parts = maybeFindMessagesSvc(guid)?.getMessageStateIfExists(message.guid!)?.parts;
+      if (parts != null) {
+        final fromParts = [for (final part in parts) ...part.attachments];
+        if (fromParts.isNotEmpty) return fromParts;
+      }
+    }
+
+    if (kIsWeb) return const [];
+
+    if (message.id != null) {
+      final byMessage = (Database.attachments.query()
+            ..link(Attachment_.message, Message_.id.equals(message.id!)))
+          .build();
+      try {
+        final found = byMessage.find();
+        if (found.isNotEmpty) return found;
+      } finally {
+        byMessage.close();
+      }
+    }
+
+    final guids = <String>[
+      for (final body in message.attributedBody)
+        for (final run in body.runs)
+          if (run.attributes?.attachmentGuid != null) run.attributes!.attachmentGuid!,
+    ];
+    if (guids.isEmpty) return const [];
+
+    final byGuid = Database.attachments.query(Attachment_.guid.oneOf(guids)).build();
+    try {
+      return byGuid.find();
+    } finally {
+      byGuid.close();
+    }
   }
 
   /// Whether [attachment] can render a compact preview without downloading.
