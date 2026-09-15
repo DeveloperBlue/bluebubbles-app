@@ -621,6 +621,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver, TrayListener {
         await windowManager.hide();
         break;
       case 'close_app':
+        if (Platform.isLinux) exit(0);
         await windowManager.setPreventClose(false);
         await windowManager.close();
         break;

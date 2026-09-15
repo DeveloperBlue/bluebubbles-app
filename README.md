@@ -102,7 +102,7 @@ BlueBubbles is free and open-source, maintained entirely by volunteers. If you f
 
 ## Sponsors
 
-| ![signpath](https://signpath.org/assets/favicon-50x50.png) | Free code signing on Windows provided by [SignPath.io](https://about.signpath.io/), certficate by [SignPath Foundation](https://signpath.org/) |
+| ![signpath](https://signpath.org/assets/favicon-50x50.png) | Free code signing on Windows provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/) |
 |------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
 
 ---

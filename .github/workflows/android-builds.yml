@@ -23,6 +23,7 @@ permissions:
 env:
   # Matches the pin in windows/build.ps1, linux/build.sh and the other workflows.
   FLUTTER_VERSION: "3.44.6"
+  FVM_VERSION: "4.1.2"
   # Pinned by android/app/build.gradle; the runner image does not always carry it.
   ANDROID_NDK_VERSION: "28.2.13676358"
   # android/app/build.gradle compileSdk.
@@ -72,7 +73,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Java
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -87,22 +88,24 @@ jobs:
             "platforms;android-${ANDROID_COMPILE_SDK}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
-      # Skipping fvm here since there's no need to switch SDKs mid-job, but the version
-      # is the same one the desktop builds pin.
-      #
-      # Nothing is cached in this workflow, including the action's own `cache` input.
-      # This job signs and publishes a release binary, and cache entries are mutable
-      # state that never shows up in git history, so a poisoned one would end up inside
-      # a signed APK with nothing to review. Tag builds are rare enough that refetching
-      # is cheap. (The `cache` input also delegates to a floating actions/cache@v3.)
+      # Also resolves dependencies, so there's no separate pub get below.
       - name: Setup Flutter
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          fvm-version: ${{ env.FVM_VERSION }}
 
-      - name: Pub get
-        run: flutter pub get --enforce-lockfile
+      - name: Restore Gradle cache
+        id: cache-gradle
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ matrix.flavor }}-${{ hashFiles('android/**/*.gradle', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ matrix.flavor }}-
+            gradle-${{ runner.os }}-
 
       # pubspec.yaml declares .env as an asset, so the build fails without it. The key
       # itself is desktop-only - dotenv.load() is behind `if (kIsDesktop)` in main.dart
@@ -137,7 +140,7 @@ jobs:
             echo "keyPassword=$(esc "$KEY_PASSWORD")"
           } > android/key.properties
 
-      # --no-pub: reuse the lockfile-enforced resolution from the Pub get step.
+      # --no-pub: reuse the lockfile-enforced resolution from the Setup Flutter step.
       # Has to go through the flutter tool rather than gradlew directly - flutter build
       # is what refreshes android/local.properties with flutter.versionCode from
       # pubspec.yaml, and build.gradle folds that into the final versionCode.
@@ -147,16 +150,22 @@ jobs:
         # fallback into a hard error.
         env:
           BB_REQUIRE_RELEASE_SIGNING: "true"
-        run: flutter build ${{ matrix.target }} --release --flavor ${{ matrix.flavor }} --no-pub
+        run: fvm flutter build ${{ matrix.target }} --release --flavor ${{ matrix.flavor }} --no-pub
 
-      # The keystore is only needed by the gradle build above. Drop it before any
-      # third-party action runs, so a compromised upload/release action cannot read it
-      # off the workspace.
-      # Drop the keystore before any third-party action runs.
+      # Only the gradle build needs the keystore, so drop it before anything else runs.
       - name: Remove signing material
         if: always()
         run: |
           rm -f android/key.properties "$RUNNER_TEMP/release-keystore.jks"
+
+      - name: Save Gradle cache
+        if: steps.cache-gradle.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.cache-gradle.outputs.cache-primary-key }}
 
       # Flutter lower-cases the flavor for APK filenames but not for bundle paths, and
       # that has moved around between versions, so find the file rather than hardcoding
@@ -197,7 +206,7 @@ jobs:
       # still missing. It also means a mistaken run only adds an asset to a draft.
       - name: Attach APK to release
         if: ${{ matrix.target == 'apk' && startsWith(github.ref, 'refs/tags/') }}
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           files: out/${{ matrix.filename }}
           draft: true
