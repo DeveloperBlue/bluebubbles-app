@@ -359,7 +359,8 @@ class SyncActions {
     final attachmentsToSave = <Attachment>[];
     final messagesNeedingFlagUpdate = <Message>{};
     for (final inputA in inputAttachments) {
-      final toSave = existingMap[inputA.guid] ?? inputA;
+      final existing = existingMap[inputA.guid];
+      final toSave = existing != null ? Attachment.merge(existing, inputA) : inputA;
       final ownerGuid = ownerGuidByAttachmentGuid[inputA.guid];
       if (ownerGuid != null) {
         final msg = messagesByGuid[ownerGuid];
