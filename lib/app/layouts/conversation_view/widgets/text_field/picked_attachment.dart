@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mime_type/mime_type.dart';
+import 'package:motion_photos/motion_photos.dart';
 import 'package:universal_io/io.dart';
 
 class PickedAttachment extends StatefulWidget {
@@ -35,6 +36,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
   bool isLoading = true;
   bool isEmpty = false;
   bool thumbnailFailed = false;
+  bool isMotionPhoto = false;
 
   @override
   void initState() {
@@ -74,6 +76,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
         // Fallback to bytes if conversion fails
         imageBytes = file.bytes;
       }
+      await _detectMotionPhoto(file.path, mimeType);
       setState(() {
         isLoading = false;
       });
@@ -86,6 +89,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
       } else {
         isEmpty = true;
       }
+      await _detectMotionPhoto(file.path, mimeType);
       setState(() {
         isLoading = false;
       });
@@ -94,6 +98,15 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
         isEmpty = true;
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> _detectMotionPhoto(String? path, String mimeType) async {
+    if (!Platform.isAndroid || path == null || !mimeType.startsWith("image/")) return;
+    try {
+      isMotionPhoto = await MotionPhotos(path).isMotionPhoto();
+    } catch (_) {
+      // Sniffing failed — treat as a still image.
     }
   }
 
@@ -169,6 +182,16 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                                 color: Colors.white,
                                 size: 40,
                               ),
+                            ),
+                          ),
+                        if (!isLoading && isMotionPhoto)
+                          const Positioned(
+                            top: 6,
+                            left: 6,
+                            child: Icon(
+                              Icons.motion_photos_on_outlined,
+                              color: Colors.white,
+                              size: 18,
                             ),
                           ),
                         if (!isLoading && iOS)
