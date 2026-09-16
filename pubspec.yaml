@@ -194,6 +194,7 @@ dependencies:
   flutter_native_splash: any
   rxdart: any
   uuid: any
+  motion_photos: ^1.0.0
 dependency_overrides:
   clock: ^1.1.2 # encrypter_plus
   flat_buffers: # RangeError on FlexBuffer resize: https://github.com/objectbox/objectbox-dart/issues/786

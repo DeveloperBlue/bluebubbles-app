@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mime_type/mime_type.dart';
+import 'package:motion_photos/motion_photos.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 /// Optimized attachment picker file that uses File-based rendering instead of loading bytes
@@ -31,6 +32,7 @@ class _AttachmentPickerFileState extends State<AttachmentPickerFile> with ThemeH
   String? filePath;
   bool isLoading = true;
   bool hasError = false;
+  bool isMotionPhoto = false;
 
   @override
   void initState() {
@@ -75,6 +77,14 @@ class _AttachmentPickerFileState extends State<AttachmentPickerFile> with ThemeH
       }
       // All paths use Image.file for efficient rendering
 
+      if (Platform.isAndroid && widget.data.type == AssetType.image) {
+        try {
+          isMotionPhoto = await MotionPhotos(file.path).isMotionPhoto();
+        } catch (_) {
+          // Sniffing failed — treat as a still image.
+        }
+      }
+
       if (mounted) {
         setState(() {
           isLoading = false;
@@ -106,18 +116,23 @@ class _AttachmentPickerFileState extends State<AttachmentPickerFile> with ThemeH
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: widget.onTap,
-          child: Stack(
-            alignment: Alignment.center,
-            children: <Widget>[
-              // Show image/thumbnail
-              if (!isLoading && !hasError && !hideAttachments) _buildImage(),
+          child: SizedBox.expand(
+            child: Stack(
+              alignment: Alignment.center,
+              children: <Widget>[
+                // Show image/thumbnail
+                if (!isLoading && !hasError && !hideAttachments) _buildImage(),
 
-              // Show placeholder while loading or on error
-              if (isLoading || hasError || hideAttachments) _buildPlaceholder(context),
+                // Show placeholder while loading or on error
+                if (isLoading || hasError || hideAttachments) _buildPlaceholder(context),
 
-              // Show selection indicator or video icon
-              if (containsThis || widget.data.type == AssetType.video) _buildOverlayIcon(context, containsThis),
-            ],
+                // Show selection indicator or video icon
+                if (containsThis || widget.data.type == AssetType.video) _buildOverlayIcon(context, containsThis),
+
+                // Motion Photo badge (Android images only; videos use the play overlay above)
+                if (isMotionPhoto && !containsThis && widget.data.type != AssetType.video) _buildMotionPhotoBadge(),
+              ],
+            ),
           ),
         ),
       );
@@ -164,6 +179,20 @@ class _AttachmentPickerFileState extends State<AttachmentPickerFile> with ThemeH
               mime(filePath) ?? "",
               textAlign: TextAlign.center,
             ),
+    );
+  }
+
+  Widget _buildMotionPhotoBadge() {
+    return const Align(
+      alignment: Alignment.topRight,
+      child: Padding(
+        padding: EdgeInsets.all(6),
+        child: Icon(
+          Icons.motion_photos_on_outlined,
+          color: Colors.white,
+          size: 18,
+        ),
+      ),
     );
   }
 
