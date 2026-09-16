@@ -46,9 +46,9 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
     return "${livePhotoAttachment.directory}/$fileName";
   }
 
-  /// Extracted MP4 path for [stillPath], cached under app temp.
+  /// Extracted MP4 path for [stillPath], cached under OS temp (reclaimable).
   Future<String> getMotionPhotoPath(String stillPath) async {
-    final destDir = Directory(p.join(FilesystemSvc.appTempPath, 'motion_photos'));
+    final destDir = Directory(p.join(FilesystemSvc.sysTempPath, 'motion_photos'));
     await destDir.create(recursive: true);
     final digest = sha256.convert(utf8.encode(stillPath)).toString();
     return p.join(destDir.path, '$digest.mp4');
