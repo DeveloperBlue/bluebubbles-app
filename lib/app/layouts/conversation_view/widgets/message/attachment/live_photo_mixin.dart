@@ -1,12 +1,16 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
+import 'package:bluebubbles/services/backend/filesystem/filesystem_service.dart';
 import 'package:bluebubbles/services/network/http_service.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:motion_photos/motion_photos.dart';
 import 'package:path/path.dart' as p;
 
 /// Mixin that provides live photo functionality for image viewers
@@ -24,6 +28,10 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
   // Must be implemented by the using class
   Attachment get livePhotoAttachment;
 
+  /// Local still path of an Android Motion Photo. When set, playback extracts the
+  /// embedded MP4 instead of downloading a Live Photo companion from the server.
+  String? get motionPhotoStillPath => null;
+
   @override
   void dispose() {
     livePhotoPlayer?.dispose();
@@ -36,6 +44,14 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
     final nameSplit = livePhotoAttachment.transferName!.split(".");
     final fileName = "${nameSplit.take(nameSplit.length - 1).join(".")}.mov";
     return "${livePhotoAttachment.directory}/$fileName";
+  }
+
+  /// Extracted MP4 path for [stillPath], cached under app temp.
+  Future<String> getMotionPhotoPath(String stillPath) async {
+    final destDir = Directory(p.join(FilesystemSvc.appTempPath, 'motion_photos'));
+    await destDir.create(recursive: true);
+    final digest = sha256.convert(utf8.encode(stillPath)).toString();
+    return p.join(destDir.path, '$digest.mp4');
   }
 
   Future<void> handleLivePhotoTap() async {
@@ -88,9 +104,29 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
       return;
     }
 
-    // Get persistent storage path
-    final livePhotoPath = getLivePhotoPath();
+    final stillPath = motionPhotoStillPath;
+    final livePhotoPath = stillPath != null ? await getMotionPhotoPath(stillPath) : getLivePhotoPath();
     final livePhotoFileOnDisk = File(livePhotoPath);
+
+    // Motion Photo: extract the embedded MP4 once, then play like a Live Photo on disk
+    if (stillPath != null && !await livePhotoFileOnDisk.exists()) {
+      isDownloadingLivePhoto.value = true;
+      livePhotoProgress.value = 0.0;
+      try {
+        final videoBytes = await MotionPhotos(stillPath).getMotionVideo();
+        await livePhotoFileOnDisk.writeAsBytes(videoBytes);
+      } catch (ex) {
+        Logger.error("Failed to extract/play motion photo", error: ex);
+        if (mounted) {
+          isDownloadingLivePhoto.value = false;
+        }
+        showSnackbar("Error", "Failed to play motion photo");
+        return;
+      }
+      if (mounted) {
+        isDownloadingLivePhoto.value = false;
+      }
+    }
 
     // Check if live photo already exists on disk
     if (await livePhotoFileOnDisk.exists()) {
@@ -253,23 +289,27 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
   }
 
   /// Build the live photo video overlay
-  Widget buildLivePhotoOverlay() {
+  Widget buildLivePhotoOverlay({GestureTapCallback? onTap}) {
     return Obx(() {
       if (!isPlayingLivePhoto.value || livePhotoController == null) {
         return const SizedBox.shrink();
       }
 
-      return Positioned.fill(
-        child: AnimatedOpacity(
-          opacity: livePhotoOpacity.value,
-          duration: const Duration(milliseconds: 200),
-          child: Video(
-            controller: livePhotoController!,
-            fit: BoxFit.contain,
-            controls: null,
-          ),
+      Widget video = AnimatedOpacity(
+        opacity: livePhotoOpacity.value,
+        duration: const Duration(milliseconds: 200),
+        child: Video(
+          controller: livePhotoController!,
+          fit: BoxFit.contain,
+          controls: null,
         ),
       );
+
+      if (onTap != null) {
+        video = GestureDetector(onTap: onTap, child: video);
+      }
+
+      return Positioned.fill(child: video);
     });
   }
 }
