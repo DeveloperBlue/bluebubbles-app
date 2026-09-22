@@ -95,8 +95,16 @@ class MotionPhotoHelpers {
           Logger.warn('No usable Motion Photo video index for remux', tag: _tag);
           return null;
         }
-        final motion = MotionPhotos(motionSourcePath);
-        final videoBytes = await motion.getMotionVideo(index: index);
+        // Slice the video range ourselves. Do not call MotionPhotos.getMotionVideo(index:)
+        // — when an index is passed it skips loadBuffer() and crashes on late _buffer.
+        final raf = await File(motionSourcePath).open(mode: FileMode.read);
+        late final Uint8List videoBytes;
+        try {
+          await raf.setPosition(index.start);
+          videoBytes = await raf.read(index.videoLength);
+        } finally {
+          await raf.close();
+        }
         if (videoBytes.isEmpty || !_looksLikeMp4(videoBytes)) {
           Logger.warn(
             'Extracted Motion Photo video is empty or not MP4 (${videoBytes.length} bytes)',
