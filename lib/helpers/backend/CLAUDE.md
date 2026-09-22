@@ -7,6 +7,7 @@
 | `startup_tasks.dart` | `StartupTasks` — ordered service initialization; the single source of truth for startup sequence |
 | `settings_helpers.dart` | `saveNewServerUrl()`, `clearServerUrl()`, `disableBatteryOptimizations()` — convenience wrappers for common settings mutations |
 | `foreground_service_helpers.dart` | `runForegroundService()`, `restartForegroundService()` — Android foreground service control via method channel |
+| `motion_photo_helpers.dart` | `truncateStill()`, `remuxCompanion()` — Android Motion Photo split for outgoing Live Photo sends |
 
 ---
 

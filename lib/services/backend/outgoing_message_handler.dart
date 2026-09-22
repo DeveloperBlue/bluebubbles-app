@@ -2,6 +2,7 @@ import 'package:bluebubbles/models/models.dart' show AttachmentUploadProgress;
 import 'dart:async';
 import 'dart:collection';
 import 'package:bluebubbles/database/models.dart';
+import 'package:bluebubbles/helpers/backend/motion_photo_helpers.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/services/backend/interfaces/send_message_interface.dart';
 import 'package:bluebubbles/services/isolates/global_isolate.dart';
@@ -646,7 +647,30 @@ class OutgoingMessageHandler {
           final optimizedBytes = await fixSpeedyGifs(bytes);
           await destinationFile.writeAsBytes(optimizedBytes);
         } else {
-          await File(sourcePath).copy(destinationPath);
+          // Android Motion Photo → truncate still here (fast bubble). Remux runs in
+          // the upload isolate when Private API attachment send is enabled.
+          final canSendLivePhoto = SettingsSvc.settings.enablePrivateAPI.value &&
+              SettingsSvc.settings.privateAPIAttachmentSend.value;
+          final stillBytes = attachment.mimeStart == 'image'
+              ? await MotionPhotoHelpers.truncateStill(
+                  sourcePath: sourcePath,
+                  stillDestPath: destinationPath,
+                )
+              : null;
+
+          if (stillBytes != null) {
+            attachment.totalBytes = stillBytes.length;
+            attachment.metadata ??= {};
+            if (canSendLivePhoto) {
+              attachment.metadata!['motion_source_path'] = sourcePath;
+              attachment.hasLivePhoto = true;
+            } else {
+              attachment.metadata!.remove('motion_source_path');
+              attachment.hasLivePhoto = false;
+            }
+          } else {
+            await File(sourcePath).copy(destinationPath);
+          }
         }
         // For interactive messages (any balloonBundleId), also stage the media
         // at interactiveMediaPath so EmbeddedMedia can display it on first
@@ -880,6 +904,23 @@ class OutgoingMessageHandler {
       return;
     }
 
+    final motionSourcePath = attachment.metadata?['motion_source_path'] as String?;
+    final isLivePhotoSend = motionSourcePath != null && motionSourcePath.isNotEmpty;
+    // Live Photo Aux link requires Private API attachment send.
+    final method = isLivePhotoSend ? 'private-api' : _resolveMethod(m, forAttachment: true);
+
+    // Remux on the main isolate — FFmpegKit cannot run in GlobalIsolate.
+    String? auxVideoPath;
+    if (isLivePhotoSend) {
+      auxVideoPath = await MotionPhotoHelpers.remuxCompanion(
+        motionSourcePath: motionSourcePath,
+        stillDestPath: attachment.path,
+      );
+      if (auxVideoPath == null) {
+        throw StateError('Failed to remux Motion Photo companion for Live Photo send');
+      }
+    }
+
     return _sendWithRace(
       tempGuid: tempGuid,
       chat: c,
@@ -889,11 +930,12 @@ class OutgoingMessageHandler {
         filePath: attachment.path,
         fileName: attachment.transferName!,
         fileSize: attachment.totalBytes ?? 0,
-        method: _resolveMethod(m, forAttachment: true),
+        method: method,
         selectedMessageGuid: m.threadOriginatorGuid,
         effectId: m.expressiveSendStyleId,
         partIndex: int.tryParse(m.threadOriginatorPart?.split(':').firstOrNull ?? ''),
         isAudioMessage: isAudioMessage,
+        auxVideoPath: auxVideoPath,
       ),
       onSuccess: (Map<String, dynamic> data) async {
         final newMessage = Message.fromMap(data['data']);

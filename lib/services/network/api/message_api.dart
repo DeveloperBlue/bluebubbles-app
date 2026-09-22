@@ -172,6 +172,7 @@ class MessageApi {
     String? selectedMessageGuid,
     int? partIndex,
     bool? isAudioMessage,
+    PlatformFile? auxVideo,
     CancelToken? cancelToken,
   }) async {
     return _svc.runApiGuarded(() async {
@@ -185,6 +186,13 @@ class MessageApi {
         "name": fileName,
         "method": method,
       });
+
+      if (auxVideo != null && !kIsWeb && auxVideo.path != null) {
+        formData.files.add(MapEntry(
+          "auxVideo",
+          await MultipartFile.fromFile(auxVideo.path!, filename: auxVideo.name),
+        ));
+      }
 
       if (SettingsSvc.settings.enablePrivateAPI.value && SettingsSvc.settings.privateAPIAttachmentSend.value) {
         Map<String, dynamic> papiData = {

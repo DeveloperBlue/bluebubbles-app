@@ -1,12 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:bluebubbles/database/models.dart';
+import 'package:bluebubbles/helpers/backend/motion_photo_helpers.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
-import 'package:bluebubbles/services/backend/filesystem/filesystem_service.dart';
 import 'package:bluebubbles/services/network/http_service.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -47,12 +45,7 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
   }
 
   /// Extracted MP4 path for [stillPath], cached under OS temp (reclaimable).
-  Future<String> getMotionPhotoPath(String stillPath) async {
-    final destDir = Directory(p.join(FilesystemSvc.sysTempPath, 'motion_photos'));
-    await destDir.create(recursive: true);
-    final digest = sha256.convert(utf8.encode(stillPath)).toString();
-    return p.join(destDir.path, '$digest.mp4');
-  }
+  Future<String> getMotionPhotoPath(String stillPath) => MotionPhotoHelpers.cachedMotionVideoPath(stillPath);
 
   Future<void> handleLivePhotoTap() async {
     if (isDownloadingLivePhoto.value || isPlayingLivePhoto.value) {
