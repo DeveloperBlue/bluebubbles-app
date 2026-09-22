@@ -61,13 +61,17 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
         mimeType == "image/heif" ||
         mimeType == "image/tif" ||
         mimeType == "image/tiff") {
-      // Use ensureImageCompatibility to get a compatible file path
+      // Use ensureImageCompatibility to get a compatible file path.
+      // Pass actualPath — attachment.path would be attachments/<null>/<abs path>.
       try {
         final fakeAttachment = Attachment(
-          transferName: file.path,
+          transferName: file.name,
           mimeType: mimeType,
         );
-        imagePath = await AttachmentsSvc.ensureImageCompatibility(fakeAttachment);
+        imagePath = await AttachmentsSvc.ensureImageCompatibility(
+          fakeAttachment,
+          actualPath: file.path,
+        );
         if (imagePath == null && file.bytes != null) {
           // Fallback to bytes if conversion returns null
           imageBytes = file.bytes;
