@@ -235,7 +235,9 @@ class IntentsService {
 
       setPickedAttachments() {
         if (attachments.isNotEmpty) {
-          cvc(chat).pickedAttachments.value = attachments;
+          final ctrl = cvc(chat);
+          ctrl.motionPhotoOptions.clear();
+          ctrl.pickedAttachments.value = attachments;
         }
 
         if (text != null && text.isNotEmpty) {

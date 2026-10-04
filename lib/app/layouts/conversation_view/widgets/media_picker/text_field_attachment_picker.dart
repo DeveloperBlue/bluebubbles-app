@@ -535,7 +535,7 @@ class _AttachmentPickerState extends State<AttachmentPicker> with ThemeHelpers {
               }
 
               if (controller.pickedAttachments.firstWhereOrNull((e) => e.path == file.path) != null) {
-                controller.pickedAttachments.removeWhere((e) => e.path == file.path);
+                controller.removePickedAttachmentWhere((e) => e.path == file.path);
               } else {
                 // Don't preload bytes - only store the path
                 controller.pickedAttachments.add(PlatformFile(

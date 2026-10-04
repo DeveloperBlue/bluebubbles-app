@@ -668,7 +668,9 @@ class OutgoingMessageHandler {
             }
             attachment.totalBytes = truncated.byteLength;
             attachment.metadata ??= {};
-            if (canSendLivePhoto) {
+            final wantLivePhoto =
+                canSendLivePhoto && attachment.metadata!['send_as_live_photo'] != false;
+            if (wantLivePhoto) {
               attachment.metadata!['motion_source_path'] = sourcePath;
               attachment.hasLivePhoto = true;
             } else {
@@ -919,9 +921,11 @@ class OutgoingMessageHandler {
     // Remux on the main isolate — FFmpegKit cannot run in GlobalIsolate.
     String? auxVideoPath;
     if (isLivePhotoSend) {
+      final muteAudio = attachment.metadata?['mute_motion_audio'] == true;
       auxVideoPath = await MotionPhotoHelpers.remuxCompanion(
         motionSourcePath: motionSourcePath,
         stillDestPath: attachment.path,
+        muteAudio: muteAudio,
       );
       if (auxVideoPath == null) {
         throw StateError('Failed to remux Motion Photo companion for Live Photo send');

@@ -139,6 +139,7 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
           // Clear the text field and attachments now that the send has been queued,
           // mirroring what ConversationTextField.sendMessage() does for normal sends.
           controller.pickedAttachments.clear();
+          controller.motionPhotoOptions.clear();
           controller.textController.clear();
           controller.subjectTextController.clear();
           controller.replyToMessage = null;
@@ -202,7 +203,15 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
         // Store the original source path in metadata so prepAttachment can copy it.
         // For bytes-only files (clipboard/GIF keyboard), store bytes in the transient field
         // so prepAttachment can write them to disk.
-        metadata: file.path != null ? {'source_path': file.path} : null,
+        metadata: () {
+          final opts = controller.getMotionPhotoOptions(file.path);
+          final map = <String, dynamic>{
+            if (file.path != null) 'source_path': file.path,
+            if (opts != null && !opts.sendAsLivePhoto) 'send_as_live_photo': false,
+            if (opts != null && opts.muteMotionAudio) 'mute_motion_audio': true,
+          };
+          return map.isEmpty ? null : map;
+        }(),
         bytes: file.path == null ? file.bytes : null,
       );
 

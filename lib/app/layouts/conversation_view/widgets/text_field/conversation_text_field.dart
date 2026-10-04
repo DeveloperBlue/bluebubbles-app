@@ -135,6 +135,7 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
     final currentPicked = controller.pickedAttachments.map((element) => element.path).toList();
     if (incomingAttachments.any((element) => !currentPicked.contains(element))) {
       controller.pickedAttachments.clear();
+      controller.motionPhotoOptions.clear();
     }
 
     for (String s in incomingAttachments) {
@@ -419,6 +420,7 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
       ));
     }
     controller.pickedAttachments.clear();
+    controller.motionPhotoOptions.clear();
     controller.textController.clear();
     controller.subjectTextController.clear();
     controller.replyToMessage = null;
