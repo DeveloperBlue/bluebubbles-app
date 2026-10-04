@@ -8,7 +8,6 @@ import 'package:bluebubbles/utils/logger/logger.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:motion_photos/motion_photos.dart';
 import 'package:path/path.dart' as p;
 
 /// Mixin that provides live photo functionality for image viewers
@@ -106,7 +105,10 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
       isDownloadingLivePhoto.value = true;
       livePhotoProgress.value = 0.0;
       try {
-        final videoBytes = await MotionPhotos(stillPath).getMotionVideo();
+        final videoBytes = await MotionPhotoHelpers.extractVideoBytes(stillPath);
+        if (videoBytes == null || videoBytes.isEmpty) {
+          throw StateError('No embedded Motion Photo video');
+        }
         await livePhotoFileOnDisk.writeAsBytes(videoBytes);
       } catch (ex) {
         Logger.error("Failed to extract/play motion photo", error: ex);

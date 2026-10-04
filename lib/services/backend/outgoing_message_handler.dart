@@ -651,15 +651,22 @@ class OutgoingMessageHandler {
           // the upload isolate when Private API attachment send is enabled.
           final canSendLivePhoto = SettingsSvc.settings.enablePrivateAPI.value &&
               SettingsSvc.settings.privateAPIAttachmentSend.value;
-          final stillBytes = attachment.mimeStart == 'image'
+          final truncated = attachment.mimeStart == 'image'
               ? await MotionPhotoHelpers.truncateStill(
                   sourcePath: sourcePath,
                   stillDestPath: destinationPath,
                 )
               : null;
 
-          if (stillBytes != null) {
-            attachment.totalBytes = stillBytes.length;
+          if (truncated != null) {
+            if (truncated.convertedToJpeg) {
+              final name = attachment.transferName;
+              if (name != null) {
+                attachment.transferName = setExtension(name, '.jpg');
+              }
+              attachment.mimeType = 'image/jpeg';
+            }
+            attachment.totalBytes = truncated.byteLength;
             attachment.metadata ??= {};
             if (canSendLivePhoto) {
               attachment.metadata!['motion_source_path'] = sourcePath;
