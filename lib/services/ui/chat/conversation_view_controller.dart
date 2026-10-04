@@ -281,7 +281,13 @@ class ConversationViewController extends StatefulController with GetSingleTicker
       path == null ? null : motionPhotoOptions[path];
 
   MotionPhotoSendOptions ensureMotionPhotoOptions(String path) =>
-      motionPhotoOptions.putIfAbsent(path, MotionPhotoSendOptions.new);
+      motionPhotoOptions.putIfAbsent(
+        path,
+        () => MotionPhotoSendOptions(
+          sendAsLivePhoto: !SettingsSvc.settings.motionPhotoSendAsStill.value,
+          muteMotionAudio: SettingsSvc.settings.motionPhotoMuteAudio.value,
+        ),
+      );
 
   void removeMotionPhotoOptions(String? path) {
     if (path != null) motionPhotoOptions.remove(path);
