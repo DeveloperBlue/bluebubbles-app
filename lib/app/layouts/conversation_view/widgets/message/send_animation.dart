@@ -205,10 +205,14 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
         // so prepAttachment can write them to disk.
         metadata: () {
           final opts = controller.getMotionPhotoOptions(file.path);
+          final sendAsLive =
+              opts?.sendAsLivePhoto ?? !SettingsSvc.settings.motionPhotoSendAsStill.value;
+          final muteAudio =
+              opts?.muteMotionAudio ?? SettingsSvc.settings.motionPhotoMuteAudio.value;
           final map = <String, dynamic>{
             if (file.path != null) 'source_path': file.path,
-            if (opts != null && !opts.sendAsLivePhoto) 'send_as_live_photo': false,
-            if (opts != null && opts.muteMotionAudio) 'mute_motion_audio': true,
+            if (!sendAsLive) 'send_as_live_photo': false,
+            if (sendAsLive && muteAudio) 'mute_motion_audio': true,
           };
           return map.isEmpty ? null : map;
         }(),

@@ -32,8 +32,8 @@ class PickedMotionPhotoControlsState extends State<PickedMotionPhotoControls> wi
   void initState() {
     super.initState();
     final opts = widget.controller?.getMotionPhotoOptions(widget.path);
-    sendAsLivePhoto = opts?.sendAsLivePhoto ?? true;
-    muteMotionAudio = opts?.muteMotionAudio ?? false;
+    sendAsLivePhoto = opts?.sendAsLivePhoto ?? !SettingsSvc.settings.motionPhotoSendAsStill.value;
+    muteMotionAudio = opts?.muteMotionAudio ?? SettingsSvc.settings.motionPhotoMuteAudio.value;
   }
 
   @override
