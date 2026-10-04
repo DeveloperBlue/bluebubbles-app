@@ -614,6 +614,7 @@ class TextFieldComponentState extends State<TextFieldComponent> {
       }
       if (ctrl.pickedAttachments.isNotEmpty) {
         ctrl.pickedAttachments.clear();
+        ctrl.motionPhotoOptions.clear();
         return KeyEventResult.handled;
       }
     }

@@ -180,6 +180,7 @@ class MotionPhotoHelpers {
   static Future<String?> remuxCompanion({
     required String motionSourcePath,
     required String stillDestPath,
+    bool muteAudio = false,
   }) async {
     if (kIsWeb) return null;
 
@@ -205,13 +206,16 @@ class MotionPhotoHelpers {
       return null;
     }
 
-    final remuxed = await _remuxMp4ToMov(mp4Path, companionDest);
+    final remuxed = await _remuxMp4ToMov(mp4Path, companionDest, muteAudio: muteAudio);
     if (!remuxed) {
       Logger.warn('Motion Photo remux failed', tag: _tag);
       return null;
     }
 
-    Logger.info('Motion Photo companion remuxed → $companionDest', tag: _tag);
+    Logger.info(
+      'Motion Photo companion remuxed → $companionDest${muteAudio ? ' (muted)' : ''}',
+      tag: _tag,
+    );
     return companionDest;
   }
 
@@ -276,9 +280,11 @@ class MotionPhotoHelpers {
     return bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70;
   }
 
-  static Future<bool> _remuxMp4ToMov(String mp4Path, String movPath) async {
+  static Future<bool> _remuxMp4ToMov(String mp4Path, String movPath, {bool muteAudio = false}) async {
     try {
       await File(movPath).parent.create(recursive: true);
+      // `-an` drops audio while `-c copy` still stream-copies video (no re-encode).
+      final muteArgs = muteAudio ? <String>['-an'] : <String>[];
       if (_useSystemFfmpeg) {
         final result = await Process.run('ffmpeg', [
           '-y',
@@ -286,6 +292,7 @@ class MotionPhotoHelpers {
           mp4Path,
           '-c',
           'copy',
+          ...muteArgs,
           '-f',
           'mov',
           movPath,
@@ -300,9 +307,10 @@ class MotionPhotoHelpers {
         return true;
       }
 
+      final muteFlag = muteAudio ? '-an ' : '';
       final command = '-y '
           '-i "${_ffmpegEscapePath(mp4Path)}" '
-          '-c copy -f mov '
+          '-c copy $muteFlag-f mov '
           '"${_ffmpegEscapePath(movPath)}"';
       final session = await FFmpegKit.execute(command);
       final returnCode = await session.getReturnCode();

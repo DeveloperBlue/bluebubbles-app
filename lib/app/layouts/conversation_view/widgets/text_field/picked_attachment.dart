@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:animations/animations.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/picked_motion_photo_controls.dart';
 import 'package:bluebubbles/app/layouts/fullscreen_media/single_attachment_fullscreen_viewer.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -37,6 +38,8 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
   bool isEmpty = false;
   bool thumbnailFailed = false;
   bool isMotionPhoto = false;
+  Offset? _lastPointerGlobal;
+  final _motionControlsKey = GlobalKey<PickedMotionPhotoControlsState>();
 
   @override
   void initState() {
@@ -114,6 +117,10 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
     }
   }
 
+  void _showMotionMenu() {
+    _motionControlsKey.currentState?.showMenuAt(_lastPointerGlobal ?? Offset.zero);
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -158,6 +165,11 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                   final isVideo = mimeType.startsWith("video/");
                   return InkWell(
                     onTap: mimeType.startsWith("image") || isVideo ? openContainer : null,
+                    onTapDown: isMotionPhoto ? (details) => _lastPointerGlobal = details.globalPosition : null,
+                    onLongPress: isMotionPhoto ? _showMotionMenu : null,
+                    onSecondaryTapDown:
+                        isMotionPhoto ? (details) => _lastPointerGlobal = details.globalPosition : null,
+                    onSecondaryTap: isMotionPhoto ? _showMotionMenu : null,
                     child: Stack(
                       clipBehavior: Clip.none,
                       alignment: Alignment.topRight,
@@ -189,14 +201,10 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                             ),
                           ),
                         if (!isLoading && isMotionPhoto)
-                          const Positioned(
-                            top: 6,
-                            left: 6,
-                            child: Icon(
-                              Icons.motion_photos_on_outlined,
-                              color: Colors.white,
-                              size: 18,
-                            ),
+                          PickedMotionPhotoControls(
+                            key: _motionControlsKey,
+                            controller: widget.controller,
+                            path: widget.data.path,
                           ),
                         if (!isLoading && iOS)
                           Positioned(
@@ -218,7 +226,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                               ),
                               onPressed: () {
                                 if (widget.controller != null) {
-                                  widget.controller!.pickedAttachments.removeAt(widget.pickedAttachmentIndex);
+                                  widget.controller!.removePickedAttachmentAt(widget.pickedAttachmentIndex);
                                   final remaining = widget.controller!.pickedAttachments
                                       .where((e) => e.path != null)
                                       .map((e) => e.path!)
@@ -259,7 +267,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                 ),
                 onPressed: () {
                   if (widget.controller != null) {
-                    widget.controller!.pickedAttachments.removeAt(widget.pickedAttachmentIndex);
+                    widget.controller!.removePickedAttachmentAt(widget.pickedAttachmentIndex);
                     widget.controller!.chat.textFieldAttachments.removeWhere((e) => e == widget.data.path);
                     widget.controller!.chat.saveAsync(updateTextFieldAttachments: true);
                     // Don't request focus if attachment picker is open
