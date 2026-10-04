@@ -2,6 +2,7 @@ import 'package:bluebubbles/models/models.dart' show AttachmentUploadProgress;
 import 'dart:async';
 import 'dart:collection';
 import 'package:bluebubbles/database/models.dart';
+import 'package:bluebubbles/helpers/backend/agent_debug_log.dart';
 import 'package:bluebubbles/helpers/backend/motion_photo_helpers.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/services/backend/interfaces/send_message_interface.dart';
@@ -92,25 +93,40 @@ class OutgoingMessageHandler {
 
     final chatGuid = data['chatGuid'] as String?;
     final messageGuid = data['messageGuid'] as String?;
+    // Multipart sends carry a distinct per-attachment GUID; legacy attachment
+    // sends share the message GUID (and may omit the field).
+    final attachmentGuid = data['attachmentGuid'] as String? ?? messageGuid;
     final rawProgress = data['progress'];
     final progress = rawProgress is num ? rawProgress.toDouble().clamp(0.0, 1.0) : null;
 
-    if (chatGuid == null || messageGuid == null || progress == null) {
+    if (chatGuid == null || messageGuid == null || attachmentGuid == null || progress == null) {
       Logger.warn('Ignoring malformed attachment upload progress event: $data', tag: _tag);
       return;
     }
 
-    final inFlight = attachmentProgress.firstWhereOrNull((entry) => entry.guid == messageGuid);
+    final inFlight = attachmentProgress.firstWhereOrNull((entry) => entry.guid == attachmentGuid);
     if (inFlight != null) {
       inFlight.progress.value = progress;
     } else {
-      attachmentProgress.add(AttachmentUploadProgress(messageGuid, progress.obs));
+      attachmentProgress.add(AttachmentUploadProgress(attachmentGuid, progress.obs));
     }
 
     if (Get.isRegistered<MessagesService>(tag: chatGuid)) {
-      MessagesSvc(chatGuid).notifyAttachmentUploadProgress(messageGuid, messageGuid, progress);
+      MessagesSvc(chatGuid).notifyAttachmentUploadProgress(messageGuid, attachmentGuid, progress);
     }
   }
+
+  /// Whether attachments can be sent inside a single multipart message
+  /// (upload via `POST /attachment/upload` + `POST /message/multipart`).
+  ///
+  /// Requires the Private API globally enabled and server v1.7.0+. Multipart
+  /// attachment sends are inherently private-api on the server; the separate
+  /// [Settings.privateAPIAttachmentSend] toggle only gates the legacy
+  /// `/message/attachment` method choice.
+  bool get canSendMultipartAttachments =>
+      !kIsWeb &&
+      SettingsSvc.settings.enablePrivateAPI.value &&
+      SettingsSvc.serverDetails.supportsMultipartAttachmentUpload;
 
   // ── Send-progress trackers ───────────────────────────────────────────────
 
@@ -205,7 +221,8 @@ class OutgoingMessageHandler {
         _queue.add(_OutgoingEntry(_copyWithMessage(item, m)));
       }
     } else {
-      // Attachment: prepAttachment already saved it; keep the original item.
+      // Attachment / multipart-with-attachments: prep already saved it; keep
+      // the original item (including its staged attachment list).
       _queue.add(_OutgoingEntry(item));
     }
 
@@ -223,6 +240,15 @@ class OutgoingMessageHandler {
   void _ensureTempGuid(OutgoingQueueItem item) {
     if (item.message.guid == null) item.message.generateTempGuid();
     if (item is OutgoingAttachment) item.attachment.guid = item.message.guid;
+    if (item is OutgoingMultipartMessage) {
+      // Multipart attachments each carry their OWN temp GUID (distinct from
+      // the message's). Normally assigned by the UI when building the
+      // attributedBody runs; backfilled here defensively for call sites that
+      // forget (same rationale as the message-GUID centralization above).
+      for (final a in item.attachments) {
+        a.guid ??= 'temp-${randomString(8)}';
+      }
+    }
   }
 
   /// Prep [item] with a bounded retry on transient failure.
@@ -246,9 +272,13 @@ class OutgoingMessageHandler {
   /// should stop).
   Future<({bool ok, dynamic result})> _prepItemWithRetry(OutgoingQueueItem item) async {
     final isAttachment = item is OutgoingAttachment;
+    final isMultipartAttachments = item is OutgoingMultipartMessage && item.attachments.isNotEmpty;
+    // Items that stage files on disk skip _buildOutgoingMessages/_persistOutgoingMessages
+    // entirely — their prep saves the message together with its attachments.
+    final stagesFiles = isAttachment || isMultipartAttachments;
 
     List<Message>? built;
-    if (!isAttachment) {
+    if (!stagesFiles) {
       built = _buildOutgoingMessages(item.chat, item.message, item.reaction, isRetry: item.isRetry);
       if (built.isEmpty) return (ok: true, result: <Message>[]);
     }
@@ -261,6 +291,9 @@ class OutgoingMessageHandler {
       try {
         if (isAttachment) {
           await prepAttachment(item.chat, item.message, item.attachment);
+          return (ok: true, result: null);
+        } else if (isMultipartAttachments) {
+          await prepMultipartAttachments(item.chat, item.message, item.attachments);
           return (ok: true, result: null);
         } else {
           return (
@@ -278,7 +311,7 @@ class OutgoingMessageHandler {
         lastStack = st;
         // Only retry while at least one unit of work (the single message, the
         // attachment, or one of the up-to-2 split messages) is still unsaved.
-        final stillUnsaved = isAttachment
+        final stillUnsaved = stagesFiles
             ? Message.findOne(guid: item.message.guid) == null
             : built!.any((m) => Message.findOne(guid: m.guid) == null);
         if (!stillUnsaved || attempt >= _maxPrepAttempts) break;
@@ -293,7 +326,7 @@ class OutgoingMessageHandler {
     // it's one logical send, so a half-sent result would be confusing and
     // would strand the successful half in "sending" state forever (queue()
     // only enqueues what this function returns).
-    final toFail = isAttachment ? [item.message] : built!;
+    final toFail = stagesFiles ? [item.message] : built!;
     for (final m in toFail) {
       await _finalizeOutgoingFailure(
         item.chat,
@@ -324,6 +357,7 @@ class OutgoingMessageHandler {
       return OutgoingMultipartMessage(
         chat: item.chat,
         message: message,
+        attachments: item.attachments,
         isRetry: item.isRetry,
         clearNotificationsIfFromMe: item.clearNotificationsIfFromMe,
         completer: item.completer,
@@ -472,14 +506,49 @@ class OutgoingMessageHandler {
     registerSendProgressTracker(tempGuid, chat, race);
 
     httpCall().then((data) async {
+      // #region agent log
+      unawaited(AgentDebugLog.log(
+        hypothesisId: 'E1',
+        location: 'outgoing_message_handler.dart:_sendWithRace:httpOk',
+        message: 'HTTP send resolved OK',
+        data: {
+          'tempGuid': tempGuid,
+          'dataKeys': data.keys.toList(),
+          'hasNestedData': data['data'] != null,
+          'responseGuid': (data['data'] is Map) ? (data['data'] as Map)['guid'] : null,
+          'attachmentCount': (data['data'] is Map)
+              ? (((data['data'] as Map)['attachments'] as List?)?.length ?? -1)
+              : -1,
+        },
+        runId: 'echo-debug',
+      ));
+      // #endregion
       completeSendProgressIfExists(tempGuid, Origin.outgoingMessageHandler);
       try {
         await onSuccess(data);
       } catch (ex, st) {
+        // #region agent log
+        unawaited(AgentDebugLog.log(
+          hypothesisId: 'E1',
+          location: 'outgoing_message_handler.dart:_sendWithRace:onSuccessThrow',
+          message: 'onSuccess threw',
+          data: {'tempGuid': tempGuid, 'error': ex.toString()},
+          runId: 'echo-debug',
+        ));
+        // #endregion
         Logger.warn('Send success handler threw for $tempGuid', error: ex, trace: st, tag: _tag);
       }
       if (!race.isCompleted) race.complete();
     }, onError: (Object error, StackTrace stack) async {
+      // #region agent log
+      unawaited(AgentDebugLog.log(
+        hypothesisId: 'E1',
+        location: 'outgoing_message_handler.dart:_sendWithRace:httpErr',
+        message: 'HTTP send failed',
+        data: {'tempGuid': tempGuid, 'error': error.toString()},
+        runId: 'echo-debug',
+      ));
+      // #endregion
       completeSendProgressIfExists(
         tempGuid,
         Origin.outgoingMessageHandler,
@@ -498,6 +567,25 @@ class OutgoingMessageHandler {
   }
 
   Future<void> _dispatchItem(OutgoingQueueItem item) {
+    // #region agent log
+    unawaited(AgentDebugLog.log(
+      hypothesisId: 'A,C,D',
+      location: 'outgoing_message_handler.dart:_dispatchItem',
+      message: 'Dispatching outgoing queue item',
+      data: {
+        'queueType': item.type.name,
+        'messageGuid': item.message.guid,
+        'hasAttachments': item.message.hasAttachments,
+        'attachmentCount': item.message.dbAttachments.length,
+        'attributedBodyRuns': item.message.attributedBody.isEmpty
+            ? 0
+            : item.message.attributedBody.first.runs.length,
+        'isOutgoingAttachment': item is OutgoingAttachment,
+        'isOutgoingMultipart': item is OutgoingMultipartMessage,
+      },
+      runId: 'multipart-group',
+    ));
+    // #endregion
     switch (item.type) {
       case QueueType.sendMessage:
         final typed = item as OutgoingMessage;
@@ -507,7 +595,7 @@ class OutgoingMessageHandler {
         return sendMessage(typed.chat, typed.message, typed.selectedMessage, typed.reaction);
       case QueueType.sendMultipart:
         final typed = item as OutgoingMultipartMessage;
-        return sendMultipart(typed.chat, typed.message, null, null);
+        return sendMultipart(typed.chat, typed.message, null, null, attachments: typed.attachments);
       case QueueType.sendAttachment:
         final typed = item as OutgoingAttachment;
         return sendAttachment(
@@ -629,97 +717,12 @@ class OutgoingMessageHandler {
       throw StateError('Missing attachment for sendAttachment prep on message ${m.guid}');
     }
 
-    final progress = AttachmentUploadProgress(attachment.guid!, 0.0.obs);
-    attachmentProgress.add(progress);
-
-    if (!kIsWeb) {
-      final sourcePath = attachment.metadata?['source_path'] as String?;
-      if (sourcePath == null && attachment.bytes == null) {
-        throw Exception('Attachment has no source_path in metadata or bytes');
-      }
-
-      final destinationPath = attachment.path;
-      final destinationFile = await File(destinationPath).create(recursive: true);
-
-      if (sourcePath != null) {
-        if (attachment.mimeType == 'image/gif') {
-          final bytes = await File(sourcePath).readAsBytes();
-          final optimizedBytes = await fixSpeedyGifs(bytes);
-          await destinationFile.writeAsBytes(optimizedBytes);
-        } else {
-          // Android Motion Photo → truncate still here (fast bubble). Remux runs in
-          // the upload isolate when Private API attachment send is enabled.
-          final canSendLivePhoto = SettingsSvc.settings.enablePrivateAPI.value &&
-              SettingsSvc.settings.privateAPIAttachmentSend.value;
-          final truncated = attachment.mimeStart == 'image'
-              ? await MotionPhotoHelpers.truncateStill(
-                  sourcePath: sourcePath,
-                  stillDestPath: destinationPath,
-                )
-              : null;
-
-          if (truncated != null) {
-            if (truncated.convertedToJpeg) {
-              final name = attachment.transferName;
-              if (name != null) {
-                attachment.transferName = setExtension(name, '.jpg');
-              }
-              attachment.mimeType = 'image/jpeg';
-            }
-            attachment.totalBytes = truncated.byteLength;
-            attachment.metadata ??= {};
-            if (canSendLivePhoto) {
-              attachment.metadata!['motion_source_path'] = sourcePath;
-              attachment.hasLivePhoto = true;
-            } else {
-              attachment.metadata!.remove('motion_source_path');
-              attachment.hasLivePhoto = false;
-            }
-          } else {
-            await File(sourcePath).copy(destinationPath);
-          }
-        }
-        // For interactive messages (any balloonBundleId), also stage the media
-        // at interactiveMediaPath so EmbeddedMedia can display it on first
-        // render without waiting for a server download.
-        if (m.balloonBundleId != null) {
-          final mediaPath = m.interactiveMediaPath;
-          if (mediaPath != null) {
-            await File(mediaPath).create(recursive: true);
-            await File(destinationPath).copy(mediaPath);
-          }
-        }
-      } else {
-        Uint8List bytesToWrite = attachment.bytes!;
-        if (attachment.mimeType == 'image/gif') {
-          bytesToWrite = await fixSpeedyGifs(bytesToWrite);
-        }
-        await destinationFile.writeAsBytes(bytesToWrite);
-
-        // For interactive messages (any balloonBundleId), also stage the media
-        // at interactiveMediaPath so EmbeddedMedia can display it on first
-        // render without waiting for a server download.
-        if (m.balloonBundleId != null) {
-          final mediaPath = m.interactiveMediaPath;
-          if (mediaPath != null) {
-            await File(mediaPath).create(recursive: true);
-            await File(mediaPath).writeAsBytes(bytesToWrite);
-          }
-        }
-
-        attachment.bytes = null;
-      }
-
-      if (attachment.mimeStart == 'image') {
-        try {
-          await AttachmentsSvc.loadImageProperties(attachment, actualPath: destinationPath);
-        } catch (ex) {
-          Logger.warn('Failed to load image properties for outgoing attachment', error: ex, tag: _tag);
-        }
-      }
-
-      attachment.isDownloaded = true;
-    }
+    attachmentProgress.add(AttachmentUploadProgress(attachment.guid!, 0.0.obs));
+    await _stageAttachmentFile(
+      m,
+      attachment,
+      allowLivePhoto: SettingsSvc.settings.enablePrivateAPI.value && SettingsSvc.settings.privateAPIAttachmentSend.value,
+    );
 
     // ChatInterface.addMessageToChat returns a DB-hydrated Message loaded from
     // the main isolate's Store (Database.messages.get(id)) after the
@@ -740,6 +743,136 @@ class OutgoingMessageHandler {
     // Update ChatState immediately so the tile reflects the outgoing attachment
     // before the queue dispatches the HTTP call.
     ChatsSvc.updateChatLatestMessage(c.guid, savedMessage);
+  }
+
+  /// Stages every attachment of a multipart-with-attachments send and saves
+  /// the message to the DB with ALL attachments linked.
+  ///
+  /// The multipart counterpart of [prepAttachment]: each attachment carries
+  /// its own temp GUID, so each gets its own progress entry, disk path, and
+  /// upload-started notification.
+  Future<void> prepMultipartAttachments(Chat c, Message m, List<Attachment> attachments) async {
+    for (final attachment in attachments) {
+      if (!attachmentProgress.any((e) => e.guid == attachment.guid)) {
+        attachmentProgress.add(AttachmentUploadProgress(attachment.guid!, 0.0.obs));
+      }
+      // Multipart attachment send requires Private API; Live Photo remux is allowed.
+      await _stageAttachmentFile(m, attachment, allowLivePhoto: true);
+    }
+
+    final savedMessage = (await c.addMessage(m, attachments: attachments)).message;
+
+    if (Get.isRegistered<MessagesService>(tag: c.guid)) {
+      await MessagesSvc(c.guid).addNewMessage(savedMessage);
+      for (final attachment in attachments) {
+        MessagesSvc(c.guid).notifyAttachmentUploadStarted(savedMessage, attachment);
+      }
+    }
+    ChatsSvc.updateChatLatestMessage(c.guid, savedMessage);
+  }
+
+  /// Copies (or writes) [attachment]'s source data to its guid-based local
+  /// path, optimising GIFs, staging interactive media / Motion Photos, and
+  /// loading image metadata. Shared by [prepAttachment] and
+  /// [prepMultipartAttachments].
+  Future<void> _stageAttachmentFile(
+    Message m,
+    Attachment attachment, {
+    required bool allowLivePhoto,
+  }) async {
+    if (kIsWeb) return;
+
+    final sourcePath = attachment.metadata?['source_path'] as String?;
+    if (sourcePath == null && attachment.bytes == null) {
+      throw Exception('Attachment has no source_path in metadata or bytes');
+    }
+
+    final destinationPath = attachment.path;
+    // Create the parent directory only — don't touch the destination file yet,
+    // so File.copy can create it atomically from the source.
+    await Directory(attachment.directory).create(recursive: true);
+
+    final sourceFile = sourcePath != null ? File(sourcePath) : null;
+    final sourceExists = sourceFile != null && await sourceFile.exists();
+
+    if (sourceExists) {
+      if (attachment.mimeType == 'image/gif') {
+        final bytes = await sourceFile.readAsBytes();
+        final optimizedBytes = await fixSpeedyGifs(bytes);
+        await File(destinationPath).writeAsBytes(optimizedBytes);
+      } else {
+        // Android Motion Photo → truncate + sanitize still here (fast bubble).
+        // Remux runs later in sendAttachment / sendMultipart on the main isolate.
+        final truncated = attachment.mimeStart == 'image'
+            ? await MotionPhotoHelpers.truncateStill(
+                sourcePath: sourceFile.path,
+                stillDestPath: destinationPath,
+              )
+            : null;
+
+        if (truncated != null) {
+          if (truncated.convertedToJpeg) {
+            final name = attachment.transferName;
+            if (name != null) {
+              attachment.transferName = setExtension(name, '.jpg');
+            }
+            attachment.mimeType = 'image/jpeg';
+          }
+          attachment.totalBytes = truncated.byteLength;
+          attachment.metadata ??= {};
+          if (allowLivePhoto) {
+            attachment.metadata!['motion_source_path'] = sourceFile.path;
+            attachment.hasLivePhoto = true;
+          } else {
+            attachment.metadata!.remove('motion_source_path');
+            attachment.hasLivePhoto = false;
+          }
+        } else {
+          await sourceFile.copy(destinationPath);
+        }
+      }
+      // For interactive messages (any balloonBundleId), also stage the media
+      // at interactiveMediaPath so EmbeddedMedia can display it on first
+      // render without waiting for a server download.
+      if (m.balloonBundleId != null) {
+        final mediaPath = m.interactiveMediaPath;
+        if (mediaPath != null) {
+          await File(mediaPath).create(recursive: true);
+          await File(destinationPath).copy(mediaPath);
+        }
+      }
+    } else if (attachment.bytes != null) {
+      Uint8List bytesToWrite = attachment.bytes!;
+      if (attachment.mimeType == 'image/gif') {
+        bytesToWrite = await fixSpeedyGifs(bytesToWrite);
+      }
+      await File(destinationPath).writeAsBytes(bytesToWrite);
+
+      if (m.balloonBundleId != null) {
+        final mediaPath = m.interactiveMediaPath;
+        if (mediaPath != null) {
+          await File(mediaPath).create(recursive: true);
+          await File(mediaPath).writeAsBytes(bytesToWrite);
+        }
+      }
+
+      attachment.bytes = null;
+    } else {
+      throw Exception(
+        'Cannot stage attachment "${attachment.transferName}" — source file is missing '
+        '($sourcePath) and no bytes were retained',
+      );
+    }
+
+    if (attachment.mimeStart == 'image') {
+      try {
+        await AttachmentsSvc.loadImageProperties(attachment, actualPath: destinationPath);
+      } catch (ex) {
+        Logger.warn('Failed to load image properties for outgoing attachment', error: ex, tag: _tag);
+      }
+    }
+
+    attachment.isDownloaded = true;
   }
 
   // ── Send methods ─────────────────────────────────────────────────────────
@@ -840,8 +973,18 @@ class OutgoingMessageHandler {
     );
   }
 
-  /// Sends a multipart (mention / mixed-content) message.
-  Future<void> sendMultipart(Chat c, Message m, Message? selected, String? r) {
+  /// Sends a multipart (mention / mixed-content / attachment) message.
+  ///
+  /// When [attachments] is non-empty, each staged file is uploaded inside the
+  /// isolate (via `POST /attachment/upload`) before the multipart request
+  /// fires; attachment runs in the attributedBody map to attachment parts.
+  Future<void> sendMultipart(
+    Chat c,
+    Message m,
+    Message? selected,
+    String? r, {
+    List<Attachment> attachments = const [],
+  }) async {
     ChatsSvc.updateChat(c);
 
     // Only update latest message if the failed message is the current latest message.
@@ -851,13 +994,89 @@ class OutgoingMessageHandler {
     }
 
     final tempGuid = m.guid!;
-    final parts = m.attributedBody.first.runs
-        .map((e) => {
-              'text': m.attributedBody.first.string.substring(e.range.first, e.range.first + e.range.last),
-              'mention': e.attributes!.mention,
-              'partIndex': e.attributes!.messagePart,
-            })
-        .toList();
+    final body = m.attributedBody.first;
+    final parts = <Map<String, dynamic>>[];
+    for (final e in body.runs) {
+      final attachmentGuid = e.attributes?.attachmentGuid;
+      if (attachmentGuid != null) {
+        final attachment = attachments.firstWhereOrNull((a) => a.guid == attachmentGuid);
+        if (attachment == null) {
+          Logger.warn('No staged attachment matches run $attachmentGuid; skipping part', tag: _tag);
+          continue;
+        }
+        // The isolate action uploads the staged file and replaces
+        // attachmentTempGuid with the server's upload id (see
+        // SendMessageActions.sendMultipartMessage).
+        parts.add({
+          'partIndex': e.attributes!.messagePart,
+          'attachmentTempGuid': attachment.guid,
+          'name': attachment.transferName,
+        });
+      } else {
+        parts.add({
+          'text': body.string.substring(e.range.first, e.range.first + e.range.last),
+          'mention': e.attributes!.mention,
+          'partIndex': e.attributes!.messagePart,
+        });
+      }
+    }
+
+    // Fail fast if a staged file went missing (mirrors sendAttachment).
+    if (!kIsWeb) {
+      for (final a in attachments) {
+        if (!File(a.path).existsSync()) {
+          Logger.error('Attachment file not found at ${a.path}', tag: _tag);
+          return;
+        }
+      }
+    }
+
+    // Remux Live Photo companions on the main isolate — FFmpegKit cannot run
+    // in GlobalIsolate. Upload then picks them up via auxVideoPath.
+    final attachmentPayloads = <Map<String, dynamic>>[];
+    for (final a in attachments) {
+      String? auxVideoPath;
+      final motionSourcePath = a.metadata?['motion_source_path'] as String?;
+      if (motionSourcePath != null && motionSourcePath.isNotEmpty) {
+        auxVideoPath = await MotionPhotoHelpers.remuxCompanion(
+          motionSourcePath: motionSourcePath,
+          stillDestPath: a.path,
+        );
+        if (auxVideoPath == null) {
+          throw StateError('Failed to remux Motion Photo companion for Live Photo multipart send');
+        }
+      }
+      attachmentPayloads.add({
+        'tempGuid': a.guid,
+        'filePath': a.path,
+        'fileName': a.transferName,
+        'fileSize': a.totalBytes ?? 0,
+        'auxVideoPath': auxVideoPath,
+      });
+    }
+
+    // #region agent log
+    unawaited(AgentDebugLog.log(
+      hypothesisId: 'A,C,D,E',
+      location: 'outgoing_message_handler.dart:sendMultipart',
+      message: 'Calling /message/multipart',
+      data: {
+        'tempGuid': tempGuid,
+        'partCount': parts.length,
+        'stagedAttachmentCount': attachments.length,
+        'livePhotoCount': attachmentPayloads.where((p) => p['auxVideoPath'] != null).length,
+        'parts': parts
+            .map((p) => {
+                  'partIndex': p['partIndex'],
+                  'hasAttachmentTempGuid': p['attachmentTempGuid'] != null,
+                  'textLen': (p['text'] as String?)?.length ?? 0,
+                })
+            .toList(),
+        'endpoint': '/message/multipart',
+      },
+      runId: 'post-fix',
+    ));
+    // #endregion
 
     return _sendWithRace(
       tempGuid: tempGuid,
@@ -866,13 +1085,47 @@ class OutgoingMessageHandler {
         chatGuid: c.guid,
         tempGuid: tempGuid,
         parts: parts,
+        attachments: attachmentPayloads,
         subject: m.subject,
         selectedMessageGuid: m.threadOriginatorGuid,
         effectId: m.expressiveSendStyleId,
         partIndex: int.tryParse(m.threadOriginatorPart?.split(':').firstOrNull ?? ''),
-        ddScan: !SettingsSvc.serverDetails.isMinSonoma && parts.any((e) => e['text'].toString().hasUrl),
+        ddScan: !SettingsSvc.serverDetails.isMinSonoma && parts.any((e) => (e['text']?.toString() ?? '').hasUrl),
       ),
-      onSuccess: (data) => _finalizeOutgoingSuccess(c, tempGuid, data),
+      onSuccess: attachments.isEmpty
+          ? (data) => _finalizeOutgoingSuccess(c, tempGuid, data)
+          : (Map<String, dynamic> data) async {
+              final newMessage = Message.fromMap(data['data']);
+              final responseAttachments = ((data['data']?['attachments'] as List?) ?? <dynamic>[])
+                  .whereType<Map>()
+                  .map((e) => Attachment.fromMap(e.cast<String, Object>()))
+                  .toList();
+              // Swap attachment GUIDs first, then swap the message GUID (same
+              // ordering constraint as sendAttachment). Response attachments
+              // arrive in part order — match by index, falling back to
+              // transferName if the counts diverge.
+              final unmatched = attachments.toList();
+              for (int i = 0; i < responseAttachments.length; i++) {
+                final a = responseAttachments[i];
+                Attachment? temp = i < attachments.length ? attachments[i] : null;
+                temp ??= unmatched.firstWhereOrNull((t) => t.transferName == a.transferName);
+                if (temp?.guid == null) continue;
+                unmatched.remove(temp);
+                try {
+                  await _matchAttachmentWithExisting(c, temp!.guid!, a);
+                  if (Get.isRegistered<MessagesService>(tag: c.guid)) {
+                    MessagesSvc(c.guid).notifyAttachmentSendComplete(tempGuid, newMessage.guid!, temp.guid!, a);
+                  }
+                } catch (e, st) {
+                  Logger.warn('Failed to replace attachment ${a.guid}', error: e, trace: st, tag: _tag);
+                }
+              }
+              if (Get.isRegistered<MessagesService>(tag: c.guid)) {
+                MessagesSvc(c.guid).updateMessage(newMessage);
+              }
+              await _matchMessageWithExisting(c, tempGuid, newMessage);
+              attachmentProgress.removeWhere((e) => attachments.any((t) => t.guid == e.guid));
+            },
       onError: (error, stack) => _finalizeOutgoingFailure(
         c,
         m,
@@ -880,6 +1133,16 @@ class OutgoingMessageHandler {
         logMessage: 'Failed to send multipart message',
         error: error,
         stack: stack,
+        onExtra: attachments.isEmpty
+            ? null
+            : (errorMsg) async {
+                if (Get.isRegistered<MessagesService>(tag: c.guid)) {
+                  for (final a in attachments) {
+                    MessagesSvc(c.guid).notifyAttachmentTransferError(errorMsg.guid!, a.guid!);
+                  }
+                }
+                attachmentProgress.removeWhere((e) => attachments.any((t) => t.guid == e.guid));
+              },
       ),
     );
   }
@@ -927,6 +1190,24 @@ class OutgoingMessageHandler {
         throw StateError('Failed to remux Motion Photo companion for Live Photo send');
       }
     }
+
+    // #region agent log
+    unawaited(AgentDebugLog.log(
+      hypothesisId: 'A,E',
+      location: 'outgoing_message_handler.dart:sendAttachment',
+      message: 'Calling /message/attachment (not multipart)',
+      data: {
+        'tempGuid': tempGuid,
+        'attachmentGuid': attachment.guid,
+        'fileName': attachment.transferName,
+        'method': method,
+        'isLivePhotoSend': isLivePhotoSend,
+        'hasAuxVideo': auxVideoPath != null,
+        'endpoint': '/message/attachment',
+      },
+      runId: 'multipart-group',
+    ));
+    // #endregion
 
     return _sendWithRace(
       tempGuid: tempGuid,
@@ -1091,6 +1372,29 @@ class OutgoingMessageHandler {
     if (alreadyPresent != null) {
       // Socket event won the race — real GUID is already in the DB.
       final isNewer = replacement.isNewerThan(alreadyPresent);
+      final stale = existingGuid != replacement.guid ? Message.findOne(guid: existingGuid) : null;
+      final msvcRegistered = Get.isRegistered<MessagesService>(tag: chat.guid);
+      final tempInStruct = msvcRegistered && MessagesSvc(chat.guid).struct.getMessage(existingGuid) != null;
+      final realInStruct =
+          msvcRegistered && replacement.guid != null && MessagesSvc(chat.guid).struct.getMessage(replacement.guid!) != null;
+      // #region agent log
+      unawaited(AgentDebugLog.log(
+        hypothesisId: 'E2',
+        location: 'outgoing_message_handler.dart:_matchMessageWithExisting:alreadyPresent',
+        message: 'HTTP match: real GUID already in DB',
+        data: {
+          'existingGuid': existingGuid,
+          'replacementGuid': replacement.guid,
+          'isNewer': isNewer,
+          'staleExists': stale != null,
+          'msvcRegistered': msvcRegistered,
+          'tempInStruct': tempInStruct,
+          'realInStruct': realInStruct,
+          'willUpdateUi': stale != null && msvcRegistered,
+        },
+        runId: 'echo-debug',
+      ));
+      // #endregion
       if (isNewer) {
         try {
           await Message.replaceMessage(replacement.guid, replacement);
@@ -1107,16 +1411,28 @@ class OutgoingMessageHandler {
 
       // Clean up the stale temp record if it's distinct from the real one.
       if (existingGuid != replacement.guid) {
-        final stale = Message.findOne(guid: existingGuid);
         if (stale != null) {
           Message.delete(stale.guid!);
-          if (Get.isRegistered<MessagesService>(tag: chat.guid)) {
+          if (msvcRegistered) {
             MessagesSvc(chat.guid).updateMessage(replacement, oldGuid: existingGuid);
           }
         }
       } else {}
     } else {
       // Normal path: rename the temp record to the real GUID.
+      // #region agent log
+      unawaited(AgentDebugLog.log(
+        hypothesisId: 'E3',
+        location: 'outgoing_message_handler.dart:_matchMessageWithExisting:normal',
+        message: 'HTTP match: normal temp→real replace',
+        data: {
+          'existingGuid': existingGuid,
+          'replacementGuid': replacement.guid,
+          'msvcRegistered': Get.isRegistered<MessagesService>(tag: chat.guid),
+        },
+        runId: 'echo-debug',
+      ));
+      // #endregion
       try {
         // Capture the return value — it is fetched from the DB and has a valid id.
         final saved = await Message.replaceMessage(existingGuid, replacement);
@@ -1134,6 +1450,15 @@ class OutgoingMessageHandler {
           trace: st,
           tag: _tag,
         );
+        // #region agent log
+        unawaited(AgentDebugLog.log(
+          hypothesisId: 'E3',
+          location: 'outgoing_message_handler.dart:_matchMessageWithExisting:fallback',
+          message: 'HTTP match fallback after replace failed',
+          data: {'existingGuid': existingGuid, 'replacementGuid': replacement.guid, 'error': ex.toString()},
+          runId: 'echo-debug',
+        ));
+        // #endregion
 
         // Instead of trying to replace, just save the replacement and update the UI to use it.
         // This handles the case where the temp message was never saved to the main thread's store.

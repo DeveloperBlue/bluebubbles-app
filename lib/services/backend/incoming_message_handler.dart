@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/env.dart';
+import 'package:bluebubbles/helpers/backend/agent_debug_log.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/services/backend/interfaces/chat_interface.dart';
 import 'package:bluebubbles/services/services.dart';
@@ -312,6 +313,22 @@ class IncomingMessageHandler {
       'isFromMe=${m.isFromMe} chat=${payload.chat.guid} source=${payload.source.name}',
       tag: _tag,
     );
+    // #region agent log
+    unawaited(AgentDebugLog.log(
+      hypothesisId: 'E4',
+      location: 'incoming_message_handler.dart:_processNewMessage:entry',
+      message: 'new-message pipeline entry',
+      data: {
+        'guid': m.guid,
+        'tempGuid': tempGuid,
+        'isFromMe': m.isFromMe,
+        'isIsolate': isIsolate,
+        'attachmentCount': incomingAttachments.length,
+        'source': payload.source.name,
+      },
+      runId: 'echo-debug',
+    ));
+    // #endregion
 
     // 1. Deduplication — skip real GUIDs we have already fully handled.
     if (m.guid != null && _hasProcessed(m.guid!)) {
@@ -326,6 +343,21 @@ class IncomingMessageHandler {
     final existsByTempGuid = tempGuid != null ? Message.findOne(guid: tempGuid) : null;
     final existsByRealGuid = m.guid != null ? Message.findOne(guid: m.guid) : null;
     if (existsByTempGuid != null || existsByRealGuid != null) {
+      // #region agent log
+      unawaited(AgentDebugLog.log(
+        hypothesisId: 'E4',
+        location: 'incoming_message_handler.dart:_processNewMessage:redirectUpdated',
+        message: 'new-message redirected to updated-message',
+        data: {
+          'guid': m.guid,
+          'tempGuid': tempGuid,
+          'existsByTempGuid': existsByTempGuid != null,
+          'existsByRealGuid': existsByRealGuid != null,
+          'isIsolate': isIsolate,
+        },
+        runId: 'echo-debug',
+      ));
+      // #endregion
       Logger.debug('[new-message] ${m.guid} already in DB — routing to updated-message pipeline', tag: _tag);
       await _processUpdatedMessage(payload.copyWith(type: MessageEventType.updatedMessage));
       return;
@@ -501,6 +533,21 @@ class IncomingMessageHandler {
       if (chatState != null && chatState.latestMessage.value?.guid == m.guid) {
         ChatsSvc.updateChatLatestMessage(c.guid, m);
       }
+    } else {
+      // #region agent log
+      unawaited(AgentDebugLog.log(
+        hypothesisId: 'E5',
+        location: 'incoming_message_handler.dart:_processUpdatedMessage:skipUi',
+        message: 'updated-message skipped UI (isolate)',
+        data: {
+          'guid': m.guid,
+          'tempGuid': tempGuid,
+          'existingGuid': existingGuid,
+          'isIsolate': true,
+        },
+        runId: 'echo-debug',
+      ));
+      // #endregion
     }
   }
 
@@ -707,6 +754,29 @@ class IncomingMessageHandler {
     final svc = msvcRegistered ? MessagesSvc(chat.guid) : null;
     final tempExistsLocally = tempGuid != null && svc != null && svc.struct.getMessage(tempGuid) != null;
     final realExistsLocally = message.guid != null && svc != null && svc.struct.getMessage(message.guid!) != null;
+
+    // #region agent log
+    unawaited(AgentDebugLog.log(
+      hypothesisId: 'E5',
+      location: 'incoming_message_handler.dart:_dispatchNewMessage',
+      message: 'dispatch new-message to UI',
+      data: {
+        'guid': message.guid,
+        'tempGuid': tempGuid,
+        'msvcRegistered': msvcRegistered,
+        'tempExistsLocally': tempExistsLocally,
+        'realExistsLocally': realExistsLocally,
+        'path': tempExistsLocally
+            ? 'updateMessage'
+            : realExistsLocally
+                ? 'refresh'
+                : svc != null
+                    ? 'addNewMessage'
+                    : 'no-svc',
+      },
+      runId: 'echo-debug',
+    ));
+    // #endregion
 
     if (tempExistsLocally) {
       // Our outgoing message echoed back — swap the temp bubble in-place.

@@ -7,6 +7,7 @@ import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:bluebubbles/app/components/custom_text_editing_controllers.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/misc/tail_clipper.dart';
 import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
+import 'package:bluebubbles/helpers/backend/agent_debug_log.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/app/state/message_state.dart';
@@ -191,20 +192,46 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
       }
     }
 
+    // Send everything as ONE multipart message (upload + /message/multipart)
+    // when there are several attachments, or attachments mixed with
+    // text/subject, and the server + Private API support it. Audio messages
+    // and interactive (balloon) sends keep the dedicated attachment endpoint.
+    final useMultipartAttachments = attachments.isNotEmpty &&
+        !data.isAudioMessage &&
+        attachments.every((f) => f.balloonBundleId == null) &&
+        OutgoingMsgHandler.canSendMultipartAttachments &&
+        (attachments.length > 1 || text.isNotEmpty || data.subject.isNotEmpty);
+
+    // #region agent log
+    unawaited(AgentDebugLog.log(
+      hypothesisId: 'A,B',
+      location: 'send_animation.dart:send:preAttachPlan',
+      message: 'Outgoing send attachment plan',
+      data: {
+        'attachmentCount': attachments.length,
+        'textLen': text.length,
+        'subjectLen': data.subject.length,
+        'isAudioMessage': data.isAudioMessage,
+        'useMultipartAttachments': useMultipartAttachments,
+        'canSendMultipartAttachments': OutgoingMsgHandler.canSendMultipartAttachments,
+        'supportsMultipartUpload': SettingsSvc.serverDetails.supportsMultipartAttachmentUpload,
+        'privateApi': SettingsSvc.settings.enablePrivateAPI.value,
+        'serverVersionCode': SettingsSvc.serverDetails.serverVersionCode,
+        'names': attachments.map((f) => f.name).toList(),
+      },
+      runId: 'post-fix',
+    ));
+    // #endregion
+
+    if (useMultipartAttachments) {
+      await _sendMultipartAttachments(data, attachments, text);
+      super.updateWidget(data);
+      return;
+    }
+
     for (int i = 0; i < attachments.length; i++) {
       final file = attachments[i];
-      final attachment = Attachment(
-        isOutgoing: true,
-        mimeType: mime(file.path) ?? mime(file.name),
-        uti: "public.jpg",
-        transferName: file.name,
-        totalBytes: file.size,
-        // Store the original source path in metadata so prepAttachment can copy it.
-        // For bytes-only files (clipboard/GIF keyboard), store bytes in the transient field
-        // so prepAttachment can write them to disk.
-        metadata: file.path != null ? {'source_path': file.path} : null,
-        bytes: file.path == null ? file.bytes : null,
-      );
+      final attachment = _buildOutgoingAttachment(file);
 
       final message = Message(
         text: "",
@@ -219,6 +246,21 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
       );
       message.generateTempGuid();
       attachment.guid = message.guid;
+      // #region agent log
+      unawaited(AgentDebugLog.log(
+        hypothesisId: 'A',
+        location: 'send_animation.dart:send:queueAttachment',
+        message: 'Queuing separate OutgoingAttachment',
+        data: {
+          'index': i,
+          'of': attachments.length,
+          'messageGuid': message.guid,
+          'fileName': file.name,
+          'queueType': 'sendAttachment',
+        },
+        runId: 'post-fix',
+      ));
+      // #endregion
       await OutgoingMsgHandler.queue(
         OutgoingAttachment(
           chat: controller.chat,
@@ -230,25 +272,9 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
     }
 
     if (text.isNotEmpty || data.subject.isNotEmpty) {
-      final textSplit = MentionTextEditingController.splitText(text);
-      bool flag = false;
-      final newText = [];
-      if (textSplit.length > 1) {
-        for (String word in textSplit) {
-          if (word == MentionTextEditingController.escapingChar) flag = !flag;
-          int? index = flag ? int.tryParse(word) : null;
-          if (index != null) {
-            final mention = controller.textController.mentionables[index];
-            newText.add(mention);
-            continue;
-          }
-          if (word == MentionTextEditingController.escapingChar) {
-            continue;
-          }
-          newText.add(word.replaceAll(MentionTextEditingController.escapingChar, ""));
-        }
-        text = newText.join("");
-      }
+      final resolved = _resolveMentions(text);
+      text = resolved.text;
+      final pieces = resolved.pieces;
       int currentPos = 0;
       final _message = Message(
         text: text.isEmpty && data.subject.isNotEmpty ? data.subject : text,
@@ -262,31 +288,21 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
         handleId: 0,
         hasDdResults: true,
         attributedBody: [
-          if (textSplit.length > 1)
+          if (pieces != null)
             AttributedBody(
               string: text,
-              runs: newText.whereType<Mentionable>().isEmpty
+              runs: pieces.whereType<Mentionable>().isEmpty
                   ? []
-                  : newText.map((e) {
-                      if (e is Mentionable) {
-                        final run = Run(
-                            range: [currentPos, e.toString().length],
-                            attributes: Attributes(
-                              mention: e.address,
-                              messagePart: 0,
-                            ));
-                        currentPos += e.toString().length;
-                        return run;
-                      } else {
-                        final run = Run(
-                          range: [currentPos, e.length],
-                          attributes: Attributes(
-                            messagePart: 0,
-                          ),
-                        );
-                        currentPos += e.toString().length;
-                        return run;
-                      }
+                  : pieces.map((e) {
+                      final length = e.toString().length;
+                      final run = Run(
+                        range: [currentPos, length],
+                        attributes: e is Mentionable
+                            ? Attributes(mention: e.address, messagePart: 0)
+                            : Attributes(messagePart: 0),
+                      );
+                      currentPos += length;
+                      return run;
                     }).toList(),
             ),
         ],
@@ -328,6 +344,133 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
       });
     }
     super.updateWidget(data);
+  }
+
+  /// Builds the local [Attachment] record for an outgoing [file].
+  Attachment _buildOutgoingAttachment(PlatformFile file) {
+    return Attachment(
+      isOutgoing: true,
+      mimeType: mime(file.path) ?? mime(file.name),
+      uti: "public.jpg",
+      transferName: file.name,
+      totalBytes: file.size,
+      // Prefer a durable source_path for prep; keep bytes too when present so
+      // staging can fall back if the path disappears (ephemeral picker cache).
+      metadata: file.path != null ? {'source_path': file.path} : null,
+      bytes: file.bytes,
+    );
+  }
+
+  /// Resolves mention escape sequences in [text] against the composer's
+  /// mentionables.
+  ///
+  /// Returns the display text plus the ordered run pieces (plain [String]s and
+  /// [Mentionable]s) used to build attributedBody runs. [pieces] is `null`
+  /// when the text contains no escape sequences.
+  ({String text, List<dynamic>? pieces}) _resolveMentions(String text) {
+    final textSplit = MentionTextEditingController.splitText(text);
+    if (textSplit.length <= 1) return (text: text, pieces: null);
+
+    bool flag = false;
+    final pieces = <dynamic>[];
+    for (String word in textSplit) {
+      if (word == MentionTextEditingController.escapingChar) {
+        flag = !flag;
+        continue;
+      }
+      int? index = flag ? int.tryParse(word) : null;
+      if (index != null) {
+        pieces.add(controller.textController.mentionables[index]);
+        continue;
+      }
+      pieces.add(word.replaceAll(MentionTextEditingController.escapingChar, ""));
+    }
+    return (text: pieces.join(""), pieces: pieces);
+  }
+
+  /// Builds and queues ONE message carrying every attachment (plus optional
+  /// text/mentions) as a multipart send.
+  ///
+  /// The attributedBody mirrors the shape the server echoes back for
+  /// multi-attachment messages: one U+FFFC placeholder char per attachment at
+  /// the start of the string (so run ranges stay consistent with the text),
+  /// with one run per attachment (message parts 0..n-1, each carrying its own
+  /// temp attachment GUID) followed by the text/mention runs as the final part.
+  Future<void> _sendMultipartAttachments(SendData data, List<PlatformFile> files, String rawText) async {
+    final resolved = _resolveMentions(rawText);
+    final text = resolved.text;
+    final pieces = resolved.pieces;
+
+    const objectReplacementChar = '\uFFFC';
+    final attributedString = objectReplacementChar * files.length + text;
+
+    final builtAttachments = <Attachment>[];
+    final runs = <Run>[];
+    for (int i = 0; i < files.length; i++) {
+      final attachment = _buildOutgoingAttachment(files[i]);
+      // Each attachment gets its OWN temp GUID (distinct from the message's)
+      // so progress, disk paths, and GUID swaps stay 1:1.
+      attachment.guid = 'temp-${randomString(8)}';
+      builtAttachments.add(attachment);
+      runs.add(Run(
+        range: [i, 1],
+        attributes: Attributes(messagePart: i, attachmentGuid: attachment.guid),
+      ));
+    }
+
+    // Text (and mention) runs follow the attachments as the final part.
+    final textPartIndex = files.length;
+    int currentPos = files.length;
+    if (text.isNotEmpty) {
+      for (final e in pieces ?? <dynamic>[text]) {
+        final length = e.toString().length;
+        runs.add(Run(
+          range: [currentPos, length],
+          attributes: e is Mentionable
+              ? Attributes(mention: e.address, messagePart: textPartIndex)
+              : Attributes(messagePart: textPartIndex),
+        ));
+        currentPos += length;
+      }
+    }
+
+    final message = Message(
+      text: text,
+      subject: data.subject.isEmpty ? null : data.subject,
+      threadOriginatorGuid: data.replyGuid,
+      threadOriginatorPart: data.replyGuid != null ? "${data.replyPart ?? 0}:0:0" : null,
+      expressiveSendStyleId: data.effectId,
+      dateCreated: DateTime.now(),
+      hasAttachments: true,
+      isFromMe: true,
+      handleId: 0,
+      hasDdResults: true,
+      attributedBody: [AttributedBody(string: attributedString, runs: runs)],
+    );
+    message.generateTempGuid();
+
+    // #region agent log
+    unawaited(AgentDebugLog.log(
+      hypothesisId: 'A,C',
+      location: 'send_animation.dart:_sendMultipartAttachments',
+      message: 'Queuing OutgoingMultipartMessage with attachments',
+      data: {
+        'messageGuid': message.guid,
+        'attachmentCount': builtAttachments.length,
+        'attachmentGuids': builtAttachments.map((a) => a.guid).toList(),
+        'queueType': 'sendMultipart',
+      },
+      runId: 'post-fix',
+    ));
+    // #endregion
+
+    await OutgoingMsgHandler.queue(
+      OutgoingMultipartMessage(
+        chat: controller.chat,
+        message: message,
+        attachments: builtAttachments,
+      ),
+    );
   }
 
   @override
