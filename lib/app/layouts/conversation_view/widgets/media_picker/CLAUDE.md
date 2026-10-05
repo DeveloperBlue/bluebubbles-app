@@ -7,7 +7,7 @@ UI for selecting media files to attach before sending a message.
 | File | Purpose |
 |------|---------|
 | `text_field_attachment_picker.dart` | Bottom-sheet picker that browses the photo library and recent files; tapping an item adds it to the composer draft |
-| `attachment_picker_file.dart` | Renders a single file/photo thumbnail item inside the picker |
+| `attachment_picker_file.dart` | Renders a single file/photo thumbnail item inside the picker. Selection matching uses the asset's original path (not the HEIC-converted / video-thumbnail display path). |
 
 ## Integration
 Opened from the compose bar via the attachment (paperclip / `+`) button in `widgets/text_field/`.
