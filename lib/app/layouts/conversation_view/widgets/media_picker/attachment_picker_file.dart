@@ -29,7 +29,15 @@ class AttachmentPickerFile extends StatefulWidget {
 }
 
 class _AttachmentPickerFileState extends State<AttachmentPickerFile> with ThemeHelpers {
+  /// Path used for Image.file thumbnails (may be a converted HEIC/JPEG or video
+  /// thumbnail). Never use this for selection matching — see [originalPath].
   String? filePath;
+
+  /// Asset's real on-disk path — the same value stored in
+  /// [ConversationViewController.pickedAttachments] on tap. Selection UI must
+  /// compare against this, not [filePath], or HEIC/Motion Photo tiles never
+  /// show as selected (and converted paths can false-match other tiles).
+  String? originalPath;
   bool isLoading = true;
   bool hasError = false;
   bool isMotionPhoto = false;
@@ -50,6 +58,8 @@ class _AttachmentPickerFileState extends State<AttachmentPickerFile> with ThemeH
         });
         return;
       }
+
+      originalPath = file.path;
 
       // For videos, generate a thumbnail file and point filePath at it.
       if (widget.data.mimeType?.startsWith("video/") ?? false) {
@@ -104,7 +114,9 @@ class _AttachmentPickerFileState extends State<AttachmentPickerFile> with ThemeH
   Widget build(BuildContext context) {
     return Obx(() {
       final hideAttachments = SettingsSvc.settings.redactedMode.value && SettingsSvc.settings.hideAttachments.value;
-      bool containsThis = widget.controller.pickedAttachments.firstWhereOrNull((e) => e.path == filePath) != null;
+      final path = originalPath;
+      bool containsThis =
+          path != null && widget.controller.pickedAttachments.firstWhereOrNull((e) => e.path == path) != null;
 
       return AnimatedContainer(
         duration: const Duration(milliseconds: 250),
