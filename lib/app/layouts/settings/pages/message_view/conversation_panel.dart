@@ -202,6 +202,41 @@ class _ConversationPanelState extends State<ConversationPanel> with ThemeHelpers
                       },
                       trailing: const NextButton(),
                     ),
+                  if (!kIsWeb && Platform.isAndroid) const SettingsDivider(padding: EdgeInsets.only(left: 16.0)),
+                  if (!kIsWeb && Platform.isAndroid)
+                    Obx(() => SettingsSwitch(
+                          onChanged: (bool val) async {
+                            SettingsSvc.settings.motionPhotoSendAsStill.value = val;
+                            await SettingsSvc.settings.saveOneAsync('motionPhotoSendAsStill');
+                          },
+                          initialVal: SettingsSvc.settings.motionPhotoSendAsStill.value,
+                          title: "Send Motion Photos as Stills",
+                          subtitle: "Send as regular photos instead of Live Photos by default",
+                          backgroundColor: tileColor,
+                          isThreeLine: true,
+                        )),
+                  if (!kIsWeb && Platform.isAndroid) const SettingsDivider(padding: EdgeInsets.only(left: 16.0)),
+                  if (!kIsWeb && Platform.isAndroid)
+                    Obx(() {
+                      final stillOnly = SettingsSvc.settings.motionPhotoSendAsStill.value;
+                      return Opacity(
+                        opacity: stillOnly ? 0.45 : 1.0,
+                        child: IgnorePointer(
+                          ignoring: stillOnly,
+                          child: SettingsSwitch(
+                            onChanged: (bool val) async {
+                              SettingsSvc.settings.motionPhotoMuteAudio.value = val;
+                              await SettingsSvc.settings.saveOneAsync('motionPhotoMuteAudio');
+                            },
+                            initialVal: SettingsSvc.settings.motionPhotoMuteAudio.value,
+                            title: "Mute Motion Photo Audio",
+                            subtitle: "Strip audio when sending Motion Photos as Live Photos",
+                            backgroundColor: tileColor,
+                            isThreeLine: true,
+                          ),
+                        ),
+                      );
+                    }),
                   if (!kIsWeb) const SettingsDivider(padding: EdgeInsets.only(left: 16.0)),
                   if (!kIsWeb)
                     Column(

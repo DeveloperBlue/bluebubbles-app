@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:bluebubbles/database/models.dart';
+import 'package:bluebubbles/helpers/backend/motion_photo_helpers.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/services/network/http_service.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
@@ -45,6 +46,10 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
 
   // Must be implemented by the using class
   Attachment get livePhotoAttachment;
+
+  /// Local still path of an Android Motion Photo. When set, playback extracts the
+  /// embedded MP4 instead of downloading a Live Photo companion from the server.
+  String? get motionPhotoStillPath => null;
 
   bool _isLivePhotoPlayActive(int generation) => mounted && generation == _livePhotoPlayGeneration;
 
@@ -203,10 +208,43 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
     return "${livePhotoAttachment.directory}/$fileName";
   }
 
-  /// Ensure the `.mov` is on disk (download if needed). Returns the path, or null on failure.
+  /// Extracted MP4 path for [stillPath], cached under OS temp (reclaimable).
+  Future<String> getMotionPhotoPath(String stillPath) => MotionPhotoHelpers.cachedMotionVideoPath(stillPath);
+
+  /// Ensure the companion video is on disk (extract Motion Photo or download Live Photo).
+  /// Returns the path, or null on failure.
   Future<String?> _ensureLivePhotoOnDisk({required int prepareGeneration}) async {
-    final livePhotoPath = getLivePhotoPath();
+    final stillPath = motionPhotoStillPath;
+    final livePhotoPath = stillPath != null ? await getMotionPhotoPath(stillPath) : getLivePhotoPath();
     final livePhotoFileOnDisk = File(livePhotoPath);
+
+    // Motion Photo: extract the embedded MP4 once, then play like a Live Photo on disk.
+    if (stillPath != null && !await livePhotoFileOnDisk.exists()) {
+      isDownloadingLivePhoto.value = true;
+      livePhotoProgress.value = 0.0;
+      try {
+        final videoBytes = await MotionPhotoHelpers.extractVideoBytes(stillPath);
+        if (videoBytes == null || videoBytes.isEmpty) {
+          throw StateError('No embedded Motion Photo video');
+        }
+        await livePhotoFileOnDisk.parent.create(recursive: true);
+        if (!mounted || prepareGeneration != _livePhotoPrepareGeneration) {
+          isDownloadingLivePhoto.value = false;
+          return null;
+        }
+        await livePhotoFileOnDisk.writeAsBytes(videoBytes);
+      } catch (ex, st) {
+        if (!mounted || prepareGeneration != _livePhotoPrepareGeneration) return null;
+        Logger.error("Failed to extract/play motion photo", error: ex, trace: st);
+        isDownloadingLivePhoto.value = false;
+        return null;
+      }
+      if (!mounted || prepareGeneration != _livePhotoPrepareGeneration) {
+        isDownloadingLivePhoto.value = false;
+        return null;
+      }
+      isDownloadingLivePhoto.value = false;
+    }
 
     if (await livePhotoFileOnDisk.exists()) {
       if (!mounted || prepareGeneration != _livePhotoPrepareGeneration) return null;
@@ -218,6 +256,9 @@ mixin LivePhotoMixin<T extends StatefulWidget> on State<T> {
       );
       return livePhotoPath;
     }
+
+    // Local Motion Photos never hit the server companion download.
+    if (stillPath != null) return null;
 
     isDownloadingLivePhoto.value = true;
     livePhotoProgress.value = 0.0;

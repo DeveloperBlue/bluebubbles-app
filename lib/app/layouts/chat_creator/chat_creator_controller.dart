@@ -679,6 +679,7 @@ class ChatCreatorController extends StatefulController {
     activeCVC.chat.textFieldText = '';
     activeCVC.textController.clear();
     activeCVC.pickedAttachments.clear();
+    activeCVC.motionPhotoOptions.clear();
     await ChatsSvc.setChatTextFieldText(chat, '');
     await ChatsSvc.setChatTextFieldAttachments(chat, []);
 

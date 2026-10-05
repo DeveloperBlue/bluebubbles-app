@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:animations/animations.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/picked_motion_photo_controls.dart';
 import 'package:bluebubbles/app/layouts/fullscreen_media/single_attachment_fullscreen_viewer.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mime_type/mime_type.dart';
+import 'package:motion_photos/motion_photos.dart';
 import 'package:universal_io/io.dart';
 
 class PickedAttachment extends StatefulWidget {
@@ -35,6 +37,9 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
   bool isLoading = true;
   bool isEmpty = false;
   bool thumbnailFailed = false;
+  bool isMotionPhoto = false;
+  Offset? _lastPointerGlobal;
+  final _motionControlsKey = GlobalKey<PickedMotionPhotoControlsState>();
 
   @override
   void initState() {
@@ -59,13 +64,17 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
         mimeType == "image/heif" ||
         mimeType == "image/tif" ||
         mimeType == "image/tiff") {
-      // Use ensureImageCompatibility to get a compatible file path
+      // Use ensureImageCompatibility to get a compatible file path.
+      // Pass actualPath — attachment.path would be attachments/<null>/<abs path>.
       try {
         final fakeAttachment = Attachment(
-          transferName: file.path,
+          transferName: file.name,
           mimeType: mimeType,
         );
-        imagePath = await AttachmentsSvc.ensureImageCompatibility(fakeAttachment);
+        imagePath = await AttachmentsSvc.ensureImageCompatibility(
+          fakeAttachment,
+          actualPath: file.path,
+        );
         if (imagePath == null && file.bytes != null) {
           // Fallback to bytes if conversion returns null
           imageBytes = file.bytes;
@@ -74,6 +83,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
         // Fallback to bytes if conversion fails
         imageBytes = file.bytes;
       }
+      await _detectMotionPhoto(file.path, mimeType);
       setState(() {
         isLoading = false;
       });
@@ -86,6 +96,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
       } else {
         isEmpty = true;
       }
+      await _detectMotionPhoto(file.path, mimeType);
       setState(() {
         isLoading = false;
       });
@@ -95,6 +106,19 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
         isLoading = false;
       });
     }
+  }
+
+  Future<void> _detectMotionPhoto(String? path, String mimeType) async {
+    if (!Platform.isAndroid || path == null || !mimeType.startsWith("image/")) return;
+    try {
+      isMotionPhoto = await MotionPhotos(path).isMotionPhoto();
+    } catch (_) {
+      // Sniffing failed — treat as a still image.
+    }
+  }
+
+  void _showMotionMenu() {
+    _motionControlsKey.currentState?.showMenuAt(_lastPointerGlobal ?? Offset.zero);
   }
 
   @override
@@ -141,6 +165,11 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                   final isVideo = mimeType.startsWith("video/");
                   return InkWell(
                     onTap: mimeType.startsWith("image") || isVideo ? openContainer : null,
+                    onTapDown: isMotionPhoto ? (details) => _lastPointerGlobal = details.globalPosition : null,
+                    onLongPress: isMotionPhoto ? _showMotionMenu : null,
+                    onSecondaryTapDown:
+                        isMotionPhoto ? (details) => _lastPointerGlobal = details.globalPosition : null,
+                    onSecondaryTap: isMotionPhoto ? _showMotionMenu : null,
                     child: Stack(
                       clipBehavior: Clip.none,
                       alignment: Alignment.topRight,
@@ -171,6 +200,12 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                               ),
                             ),
                           ),
+                        if (!isLoading && isMotionPhoto)
+                          PickedMotionPhotoControls(
+                            key: _motionControlsKey,
+                            controller: widget.controller,
+                            path: widget.data.path,
+                          ),
                         if (!isLoading && iOS)
                           Positioned(
                             top: 5,
@@ -191,7 +226,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                               ),
                               onPressed: () {
                                 if (widget.controller != null) {
-                                  widget.controller!.pickedAttachments.removeAt(widget.pickedAttachmentIndex);
+                                  widget.controller!.removePickedAttachmentAt(widget.pickedAttachmentIndex);
                                   final remaining = widget.controller!.pickedAttachments
                                       .where((e) => e.path != null)
                                       .map((e) => e.path!)
@@ -232,7 +267,7 @@ class _PickedAttachmentState extends State<PickedAttachment> with AutomaticKeepA
                 ),
                 onPressed: () {
                   if (widget.controller != null) {
-                    widget.controller!.pickedAttachments.removeAt(widget.pickedAttachmentIndex);
+                    widget.controller!.removePickedAttachmentAt(widget.pickedAttachmentIndex);
                     widget.controller!.chat.textFieldAttachments.removeWhere((e) => e == widget.data.path);
                     widget.controller!.chat.saveAsync(updateTextFieldAttachments: true);
                     // Don't request focus if attachment picker is open

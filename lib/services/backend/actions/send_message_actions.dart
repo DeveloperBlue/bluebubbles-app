@@ -1,6 +1,8 @@
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/isolates/global_isolate.dart';
 import 'package:bluebubbles/services/services.dart';
+import 'package:path/path.dart';
+import 'package:universal_io/io.dart';
 
 /// Isolate-dispatchable actions for sending messages via HTTP.
 ///
@@ -79,6 +81,20 @@ class SendMessageActions {
       final filePath = att['filePath'] as String;
       final fileName = att['fileName'] as String;
       final fileSize = att['fileSize'] as int? ?? 0;
+      final auxVideoPath = att['auxVideoPath'] as String?;
+
+      PlatformFile? auxVideo;
+      if (auxVideoPath != null && auxVideoPath.isNotEmpty) {
+        final auxFile = File(auxVideoPath);
+        if (!await auxFile.exists()) {
+          throw StateError('Live Photo companion missing at $auxVideoPath');
+        }
+        auxVideo = PlatformFile(
+          name: '${basenameWithoutExtension(fileName)}.mov',
+          path: auxVideoPath,
+          size: await auxFile.length(),
+        );
+      }
 
       final uploadResponse = await HttpSvc.attachment.upload(
         PlatformFile(
@@ -86,6 +102,7 @@ class SendMessageActions {
           path: filePath,
           size: fileSize,
         ),
+        auxVideo: auxVideo,
         onSendProgress: (count, total) {
           if (total <= 0) return;
           IsolateEventEmitter.emit(
@@ -132,6 +149,9 @@ class SendMessageActions {
   ///
   /// Reads the file from [filePath] inside the isolate and constructs
   /// [FormData] locally, avoiding cross-isolate byte transfer.
+  ///
+  /// When [auxVideoPath] is set (pre-remuxed on the main isolate), uploads it
+  /// as `files.auxVideo` beside the still.
   static Future<Map<String, dynamic>> sendAttachmentMessage(dynamic data) async {
     final map = data as Map<String, dynamic>;
     final chatGuid = map['chatGuid'] as String;
@@ -145,6 +165,20 @@ class SendMessageActions {
     final selectedMessageGuid = map['selectedMessageGuid'] as String?;
     final partIndex = map['partIndex'] as int?;
     final isAudioMessage = map['isAudioMessage'] as bool? ?? false;
+    final auxVideoPath = map['auxVideoPath'] as String?;
+
+    PlatformFile? auxVideo;
+    if (auxVideoPath != null && auxVideoPath.isNotEmpty) {
+      final auxFile = File(auxVideoPath);
+      if (!await auxFile.exists()) {
+        throw StateError('Live Photo companion missing at $auxVideoPath');
+      }
+      auxVideo = PlatformFile(
+        name: '${basenameWithoutExtension(fileName)}.mov',
+        path: auxVideoPath,
+        size: await auxFile.length(),
+      );
+    }
 
     final response = await HttpSvc.message.sendAttachment(
       chatGuid,
@@ -160,6 +194,7 @@ class SendMessageActions {
       selectedMessageGuid: selectedMessageGuid,
       partIndex: partIndex,
       isAudioMessage: isAudioMessage,
+      auxVideo: auxVideo,
       onSendProgress: (count, total) {
         if (total <= 0) return;
         IsolateEventEmitter.emit(

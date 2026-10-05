@@ -13,10 +13,14 @@ class AttachmentApi {
   /// (`POST /message/multipart`). Returns the raw response; the upload
   /// identifier is at `data.path` (server >= v1.9.8) or `data.hash` (older).
   ///
+  /// When [auxVideo] is set (pre-remuxed Live Photo companion), it is uploaded
+  /// as `files.auxVideo` so the server can stage the `.mov` beside the still.
+  ///
   /// Requires the Private API and server v1.7.0+
   /// ([ServerDetails.supportsMultipartAttachmentUpload]).
   Future<Response> upload(
     PlatformFile file, {
+    PlatformFile? auxVideo,
     void Function(int, int)? onSendProgress,
     CancelToken? cancelToken,
   }) async {
@@ -26,6 +30,8 @@ class AttachmentApi {
             ? MultipartFile.fromBytes(file.bytes!, filename: file.name)
             : await MultipartFile.fromFile(file.path!, filename: file.name),
         "name": file.name,
+        if (auxVideo != null && !kIsWeb && auxVideo.path != null)
+          "auxVideo": await MultipartFile.fromFile(auxVideo.path!, filename: auxVideo.name),
       });
 
       final response = await _svc.dio.post(

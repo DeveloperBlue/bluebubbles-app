@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart' as intl;
+import 'package:motion_photos/motion_photos.dart';
 import 'package:photo_view/photo_view.dart';
 
 class FullscreenImage extends StatefulWidget {
@@ -48,6 +49,7 @@ class _FullscreenImageState extends State<FullscreenImage>
     with AutomaticKeepAliveClientMixin, LivePhotoMixin, ThemeHelpers {
   final PhotoViewController controller = PhotoViewController();
   bool hasError = false;
+  bool isMotionPhoto = false;
   Uint8List? bytes;
   String? compatiblePath; // For converted HEIC/TIFF files
 
@@ -74,6 +76,11 @@ class _FullscreenImageState extends State<FullscreenImage>
   Attachment get livePhotoAttachment => attachment;
 
   @override
+  String? get motionPhotoStillPath => isMotionPhoto && file.path != null ? file.path : null;
+
+  bool get _hasMotionOverlay => isMotionPhoto || attachment.hasLivePhoto;
+
+  @override
   void initState() {
     super.initState();
     _setFullscreen(true);
@@ -83,6 +90,7 @@ class _FullscreenImageState extends State<FullscreenImage>
     if (attachment.hasLivePhoto) {
       prepareLivePhotoSurface();
     }
+    _detectMotionPhoto();
   }
 
   void _setFullscreen(bool fullscreen) {
@@ -111,6 +119,21 @@ class _FullscreenImageState extends State<FullscreenImage>
     if (mounted) setState(() {});
   }
 
+  Future<void> _detectMotionPhoto() async {
+    if (widget.showInteractions || !Platform.isAndroid || attachment.hasLivePhoto) return;
+    final path = file.path;
+    if (path == null || !(attachment.mimeType?.startsWith("image/") ?? false)) return;
+    try {
+      final detected = await MotionPhotos(path).isMotionPhoto();
+      if (!mounted || !detected) return;
+      setState(() => isMotionPhoto = true);
+      // Pre-mount after detection so hold-to-play works like server Live Photos.
+      prepareLivePhotoSurface();
+    } catch (_) {
+      // Sniffing failed — treat as a still image.
+    }
+  }
+
   @override
   void dispose() {
     _livePhotoHoldTimer?.cancel();
@@ -130,7 +153,7 @@ class _FullscreenImageState extends State<FullscreenImage>
   }
 
   void _onLivePhotoPointerDown(PointerDownEvent event) {
-    if (!attachment.hasLivePhoto) return;
+    if (!_hasMotionOverlay) return;
     _livePhotoHoldPointer = event.pointer;
     _livePhotoHoldDownPos = event.position;
     _livePhotoHoldTimer?.cancel();
@@ -336,9 +359,9 @@ class _FullscreenImageState extends State<FullscreenImage>
         child: Stack(
           children: [
             _buildPhotoView(context),
-            if (attachment.hasLivePhoto) buildLivePhotoOverlay(),
+            if (_hasMotionOverlay) buildLivePhotoOverlay(),
             // Pointer hold catcher — no gesture arena, so PhotoView cannot abort it.
-            if (attachment.hasLivePhoto)
+            if (_hasMotionOverlay)
               Positioned.fill(
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
@@ -349,6 +372,20 @@ class _FullscreenImageState extends State<FullscreenImage>
                   child: const SizedBox.expand(),
                 ),
               ),
+            if (isMotionPhoto)
+              Obx(() {
+                if (!isDownloadingLivePhoto.value) return const SizedBox.shrink();
+                return const Center(
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                );
+              }),
             if (!iOS)
               AnimatedOpacity(
                 opacity: widget.showOverlay ? 1.0 : 0.0,

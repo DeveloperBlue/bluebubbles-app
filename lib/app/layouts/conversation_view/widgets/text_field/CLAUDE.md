@@ -11,6 +11,7 @@
 - `text_field_recording_overlay.dart` — voice message recording overlay UI
 - `voice_message_recorder.dart` — voice message recording logic
 - `picked_attachment.dart` / `picked_attachments_holder.dart` — pending attachment chip + holder
+- `picked_motion_photo_controls.dart` — Motion Photo badges + overlay menu for converting live to stills and mute
 - `reply_holder.dart` — selected reply preview above the field
 
 ## Buttons (`buttons/`)

@@ -22,6 +22,17 @@ class MessageEditEntry {
   const MessageEditEntry({required this.message, required this.part, required this.controller});
 }
 
+/// Compose-tray options for an Android Motion Photo (keyed by source path).
+class MotionPhotoSendOptions {
+  bool sendAsLivePhoto;
+  bool muteMotionAudio;
+
+  MotionPhotoSendOptions({
+    this.sendAsLivePhoto = true,
+    this.muteMotionAudio = false,
+  });
+}
+
 ConversationViewController cvc(Chat chat, {String? tag}) =>
     Get.isRegistered<ConversationViewController>(tag: tag ?? chat.guid)
         ? Get.find<ConversationViewController>(tag: tag ?? chat.guid)
@@ -81,6 +92,10 @@ class ConversationViewController extends StatefulController with GetSingleTicker
   RxBool showEmojiPicker = false.obs;
   final GlobalKey textFieldKey = GlobalKey();
   final RxList<PlatformFile> pickedAttachments = <PlatformFile>[].obs;
+
+  /// Motion Photo send toggles for staged attachments, keyed by [PlatformFile.path].
+  final Map<String, MotionPhotoSendOptions> motionPhotoOptions = {};
+
   final focusNode = FocusNode();
   final subjectFocusNode = FocusNode();
   late final textController = MentionTextEditingController(focusNode: focusNode);
@@ -291,6 +306,37 @@ class ConversationViewController extends StatefulController with GetSingleTicker
     final nextHeight = visible ? height : 0.0;
     if (smartReplyRowHeight.value != nextHeight) {
       smartReplyRowHeight.value = nextHeight;
+    }
+  }
+
+  MotionPhotoSendOptions? getMotionPhotoOptions(String? path) =>
+      path == null ? null : motionPhotoOptions[path];
+
+  MotionPhotoSendOptions ensureMotionPhotoOptions(String path) =>
+      motionPhotoOptions.putIfAbsent(
+        path,
+        () => MotionPhotoSendOptions(
+          sendAsLivePhoto: !SettingsSvc.settings.motionPhotoSendAsStill.value,
+          muteMotionAudio: SettingsSvc.settings.motionPhotoMuteAudio.value,
+        ),
+      );
+
+  void removeMotionPhotoOptions(String? path) {
+    if (path != null) motionPhotoOptions.remove(path);
+  }
+
+  void removePickedAttachmentAt(int index) {
+    if (index < 0 || index >= pickedAttachments.length) return;
+    final path = pickedAttachments[index].path;
+    pickedAttachments.removeAt(index);
+    removeMotionPhotoOptions(path);
+  }
+
+  void removePickedAttachmentWhere(bool Function(PlatformFile) test) {
+    final paths = pickedAttachments.where(test).map((e) => e.path).toList();
+    pickedAttachments.removeWhere(test);
+    for (final path in paths) {
+      removeMotionPhotoOptions(path);
     }
   }
 

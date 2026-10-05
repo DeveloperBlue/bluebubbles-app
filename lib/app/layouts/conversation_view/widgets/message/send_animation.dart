@@ -139,6 +139,7 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
           // Clear the text field and attachments now that the send has been queued,
           // mirroring what ConversationTextField.sendMessage() does for normal sends.
           controller.pickedAttachments.clear();
+          controller.motionPhotoOptions.clear();
           controller.textController.clear();
           controller.subjectTextController.clear();
           controller.replyToMessage = null;
@@ -310,6 +311,14 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
 
   /// Builds the local [Attachment] record for an outgoing [file].
   Attachment _buildOutgoingAttachment(PlatformFile file) {
+    final opts = controller.getMotionPhotoOptions(file.path);
+    final sendAsLive = opts?.sendAsLivePhoto ?? !SettingsSvc.settings.motionPhotoSendAsStill.value;
+    final muteAudio = opts?.muteMotionAudio ?? SettingsSvc.settings.motionPhotoMuteAudio.value;
+    final metadata = <String, dynamic>{
+      if (file.path != null) 'source_path': file.path,
+      if (!sendAsLive) 'send_as_live_photo': false,
+      if (sendAsLive && muteAudio) 'mute_motion_audio': true,
+    };
     return Attachment(
       isOutgoing: true,
       mimeType: mime(file.path) ?? mime(file.name),
@@ -318,7 +327,8 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
       totalBytes: file.size,
       // Prefer a durable source_path for prep; keep bytes too when present so
       // staging can fall back if the path disappears (ephemeral picker cache).
-      metadata: file.path != null ? {'source_path': file.path} : null,
+      // Motion Photo mute / still-only flags ride along in the same map.
+      metadata: metadata.isEmpty ? null : metadata,
       bytes: file.bytes,
     );
   }

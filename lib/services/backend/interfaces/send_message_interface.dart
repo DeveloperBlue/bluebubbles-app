@@ -99,6 +99,9 @@ class SendMessageInterface {
   ///
   /// The isolate reads [filePath] from disk and constructs the multipart form
   /// locally. Upload progress is not reported in v1.
+  ///
+  /// When [auxVideoPath] is set (Android Motion Photo remuxed on the main
+  /// isolate), the isolate uploads it as `files.auxVideo`.
   static Future<Map<String, dynamic>> sendAttachmentMessage({
     required String chatGuid,
     required String tempGuid,
@@ -111,6 +114,7 @@ class SendMessageInterface {
     String? selectedMessageGuid,
     int? partIndex,
     bool? isAudioMessage,
+    String? auxVideoPath,
   }) async {
     final data = {
       'chatGuid': chatGuid,
@@ -124,6 +128,7 @@ class SendMessageInterface {
       'selectedMessageGuid': selectedMessageGuid,
       'partIndex': partIndex,
       'isAudioMessage': isAudioMessage ?? false,
+      'auxVideoPath': auxVideoPath,
     };
     if (isIsolate) {
       return await SendMessageActions.sendAttachmentMessage(data);

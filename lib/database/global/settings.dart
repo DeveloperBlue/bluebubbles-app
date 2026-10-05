@@ -89,6 +89,8 @@ class Settings {
   final RxBool openKeyboardOnSTB = false.obs;
   final RxBool swipableConversationTiles = false.obs;
   final RxBool showDeliveryTimestamps = false.obs;
+  final RxBool motionPhotoSendAsStill = false.obs;
+  final RxBool motionPhotoMuteAudio = false.obs;
   final RxBool filteredChatList = false.obs;
   final RxBool startVideosMuted = true.obs;
   final RxBool startVideosMutedFullscreen = true.obs;
@@ -371,6 +373,8 @@ class Settings {
       'openKeyboardOnSTB': openKeyboardOnSTB.value,
       'swipableConversationTiles': swipableConversationTiles.value,
       'showDeliveryTimestamps': showDeliveryTimestamps.value,
+      'motionPhotoSendAsStill': motionPhotoSendAsStill.value,
+      'motionPhotoMuteAudio': motionPhotoMuteAudio.value,
       'filteredChatList': filteredChatList.value,
       'startVideosMuted': startVideosMuted.value,
       'startVideosMutedFullscreen': startVideosMutedFullscreen.value,
@@ -566,6 +570,10 @@ class Settings {
         map['swipableConversationTiles'] ?? SettingsSvc.settings.swipableConversationTiles.value;
     SettingsSvc.settings.showDeliveryTimestamps.value =
         map['showDeliveryTimestamps'] ?? SettingsSvc.settings.showDeliveryTimestamps.value;
+    SettingsSvc.settings.motionPhotoSendAsStill.value =
+        map['motionPhotoSendAsStill'] ?? SettingsSvc.settings.motionPhotoSendAsStill.value;
+    SettingsSvc.settings.motionPhotoMuteAudio.value =
+        map['motionPhotoMuteAudio'] ?? SettingsSvc.settings.motionPhotoMuteAudio.value;
     SettingsSvc.settings.filteredChatList.value =
         map['filteredChatList'] ?? SettingsSvc.settings.filteredChatList.value;
     SettingsSvc.settings.startVideosMuted.value =
@@ -812,6 +820,8 @@ class Settings {
     s.openKeyboardOnSTB.value = map['openKeyboardOnSTB'] ?? false;
     s.swipableConversationTiles.value = map['swipableConversationTiles'] ?? false;
     s.showDeliveryTimestamps.value = map['showDeliveryTimestamps'] ?? false;
+    s.motionPhotoSendAsStill.value = map['motionPhotoSendAsStill'] ?? false;
+    s.motionPhotoMuteAudio.value = map['motionPhotoMuteAudio'] ?? false;
     s.filteredChatList.value = map['filteredChatList'] ?? false;
     s.startVideosMuted.value = map['startVideosMuted'] ?? true;
     s.startVideosMutedFullscreen.value = map['startVideosMutedFullscreen'] ?? true;

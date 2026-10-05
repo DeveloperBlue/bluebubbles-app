@@ -2,6 +2,7 @@ import 'package:bluebubbles/models/models.dart' show AttachmentUploadProgress;
 import 'dart:async';
 import 'dart:collection';
 import 'package:bluebubbles/database/models.dart';
+import 'package:bluebubbles/helpers/backend/motion_photo_helpers.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/services/backend/interfaces/send_message_interface.dart';
 import 'package:bluebubbles/services/isolates/global_isolate.dart';
@@ -713,8 +714,9 @@ class OutgoingMessageHandler {
   }
 
   /// Copies (or writes) [attachment]'s source data to its guid-based local
-  /// path, optimising GIFs, staging interactive media, and loading image
-  /// metadata. Shared by [prepAttachment] and [prepMultipartAttachments].
+  /// path, optimising GIFs, staging interactive media, truncating Android
+  /// Motion Photos into stills, and loading image metadata. Shared by
+  /// [prepAttachment] and [prepMultipartAttachments].
   Future<void> _stageAttachmentFile(Message m, Attachment attachment) async {
     if (kIsWeb) return;
 
@@ -723,7 +725,7 @@ class OutgoingMessageHandler {
       throw Exception('Attachment has no source_path in metadata or bytes');
     }
 
-    final destinationPath = attachment.path;
+    var destinationPath = attachment.path;
     // Create the parent directory only — don't touch the destination file yet,
     // so File.copy can create it atomically from the source.
     await Directory(attachment.directory).create(recursive: true);
@@ -737,7 +739,39 @@ class OutgoingMessageHandler {
         final optimizedBytes = await fixSpeedyGifs(bytes);
         await File(destinationPath).writeAsBytes(optimizedBytes);
       } else {
-        await sourceFile.copy(destinationPath);
+        // Android Motion Photo → truncate still here (fast bubble). Remux runs
+        // on the main isolate later when Private API attachment send is enabled.
+        final canSendLivePhoto =
+            SettingsSvc.settings.enablePrivateAPI.value && SettingsSvc.settings.privateAPIAttachmentSend.value;
+        final truncated = attachment.mimeStart == 'image'
+            ? await MotionPhotoHelpers.truncateStill(
+                sourcePath: sourcePath!,
+                stillDestPath: destinationPath,
+              )
+            : null;
+
+        if (truncated != null) {
+          if (truncated.convertedToJpeg) {
+            final name = attachment.transferName;
+            if (name != null) {
+              attachment.transferName = setExtension(name, '.jpg');
+            }
+            attachment.mimeType = 'image/jpeg';
+            destinationPath = attachment.path;
+          }
+          attachment.totalBytes = truncated.byteLength;
+          attachment.metadata ??= {};
+          final wantLivePhoto = canSendLivePhoto && attachment.metadata!['send_as_live_photo'] != false;
+          if (wantLivePhoto) {
+            attachment.metadata!['motion_source_path'] = sourcePath;
+            attachment.hasLivePhoto = true;
+          } else {
+            attachment.metadata!.remove('motion_source_path');
+            attachment.hasLivePhoto = false;
+          }
+        } else {
+          await sourceFile.copy(destinationPath);
+        }
       }
       // For interactive messages (any balloonBundleId), also stage the media
       // at interactiveMediaPath so EmbeddedMedia can display it on first
@@ -889,8 +923,10 @@ class OutgoingMessageHandler {
   /// When [attachments] is non-empty, each staged file is uploaded inside the
   /// isolate (via `POST /attachment/upload`) before the multipart request
   /// fires; attachment runs in the attributedBody map to attachment parts.
+  /// Motion Photo Live sends remux the companion on the main isolate first and
+  /// pass `auxVideoPath` so upload can stage the `.mov` beside the still.
   Future<void> sendMultipart(Chat c, Message m, Message? selected, String? r,
-      {List<Attachment> attachments = const []}) {
+      {List<Attachment> attachments = const []}) async {
     ChatsSvc.updateChat(c);
 
     // Only update latest message if the failed message is the current latest message.
@@ -932,9 +968,27 @@ class OutgoingMessageHandler {
       for (final a in attachments) {
         if (!File(a.path).existsSync()) {
           Logger.error('Attachment file not found at ${a.path}', tag: _tag);
-          return Future.value();
+          return;
         }
       }
+    }
+
+    // Remux Motion Photo companions on the main isolate before the upload
+    // isolate runs (FFmpegKit cannot run in GlobalIsolate).
+    final auxByGuid = <String, String>{};
+    for (final a in attachments) {
+      final motionSourcePath = a.metadata?['motion_source_path'] as String?;
+      if (motionSourcePath == null || motionSourcePath.isEmpty || a.guid == null) continue;
+      final muteAudio = a.metadata?['mute_motion_audio'] == true;
+      final auxVideoPath = await MotionPhotoHelpers.remuxCompanion(
+        motionSourcePath: motionSourcePath,
+        stillDestPath: a.path,
+        muteAudio: muteAudio,
+      );
+      if (auxVideoPath == null) {
+        throw StateError('Failed to remux Motion Photo companion for Live Photo multipart send');
+      }
+      auxByGuid[a.guid!] = auxVideoPath;
     }
 
     final attachmentPayloads = attachments
@@ -943,6 +997,7 @@ class OutgoingMessageHandler {
               'filePath': a.path,
               'fileName': a.transferName,
               'fileSize': a.totalBytes ?? 0,
+              if (auxByGuid[a.guid] != null) 'auxVideoPath': auxByGuid[a.guid],
             })
         .toList();
 
@@ -1045,6 +1100,25 @@ class OutgoingMessageHandler {
       return;
     }
 
+    final motionSourcePath = attachment.metadata?['motion_source_path'] as String?;
+    final isLivePhotoSend = motionSourcePath != null && motionSourcePath.isNotEmpty;
+    // Live Photo Aux link requires Private API attachment send.
+    final method = isLivePhotoSend ? 'private-api' : _resolveMethod(m, forAttachment: true);
+
+    // Remux on the main isolate — FFmpegKit cannot run in GlobalIsolate.
+    String? auxVideoPath;
+    if (isLivePhotoSend) {
+      final muteAudio = attachment.metadata?['mute_motion_audio'] == true;
+      auxVideoPath = await MotionPhotoHelpers.remuxCompanion(
+        motionSourcePath: motionSourcePath,
+        stillDestPath: attachment.path,
+        muteAudio: muteAudio,
+      );
+      if (auxVideoPath == null) {
+        throw StateError('Failed to remux Motion Photo companion for Live Photo send');
+      }
+    }
+
     return _sendWithRace(
       tempGuid: tempGuid,
       chat: c,
@@ -1054,11 +1128,12 @@ class OutgoingMessageHandler {
         filePath: attachment.path,
         fileName: attachment.transferName!,
         fileSize: attachment.totalBytes ?? 0,
-        method: _resolveMethod(m, forAttachment: true),
+        method: method,
         selectedMessageGuid: m.threadOriginatorGuid,
         effectId: m.expressiveSendStyleId,
         partIndex: int.tryParse(m.threadOriginatorPart?.split(':').firstOrNull ?? ''),
         isAudioMessage: isAudioMessage,
+        auxVideoPath: auxVideoPath,
       ),
       onSuccess: (Map<String, dynamic> data) async {
         final newMessage = Message.fromMap(data['data']);
