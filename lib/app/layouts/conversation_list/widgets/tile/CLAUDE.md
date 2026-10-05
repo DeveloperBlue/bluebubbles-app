@@ -43,6 +43,8 @@ All three skins receive the same `ConversationTileController` and read its `Rx*`
 
 Pinned chats are rendered in a horizontal `GridView` at the top of the list. `PinnedConversationTile` uses a column layout (avatar + name stacked vertically) rather than the row layout of standard tiles.
 
+`PinnedTileTextBubble` (iOS pin grid only) can show an on-disk image or video thumb for the latest unread incoming message. If Auto Download is on, it fetches that one attachment without opening the thread (skips the storage-permission prompt; honors Wi-Fi-only). Videos generate a `.thumbnail` via ffmpeg. High Performance Mode keeps the text fallback.
+
 ## Swipe Actions
 
 `ListItem` wraps `ConversationTile` in a `Dismissible` for swipe-to-archive / swipe-to-pin on Material skin. iOS swipe actions are handled by the Cupertino skin tile directly.

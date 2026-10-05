@@ -1,3 +1,4 @@
+import 'package:bluebubbles/app/components/attachment_preview.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/attachment_holder.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/interactive/interactive_holder.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/misc/tail_clipper.dart';
@@ -10,7 +11,6 @@ import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 class ReplyBubble extends StatefulWidget {
   const ReplyBubble({
@@ -63,25 +63,35 @@ class _ReplyBubbleState extends State<ReplyBubble> with ThemeHelpers {
     return bubbleColor;
   }
 
+  /// Snippet for the Material/Samsung quoted-reply row. Matches [ReplyHolder]:
+  /// a throwaway [Message] plus the quoted part's attachments so "1 Photo"
+  /// fallbacks work when the thumbnail is missing.
+  String _quotedSnippet(MessagePart? quotedPart) {
+    if (quotedPart == null) {
+      return Message(text: controller.text.value, subject: controller.subject.value).getNotificationText();
+    }
+    final msg = Message(
+      text: quotedPart.text,
+      subject: quotedPart.subject,
+      hasAttachments: quotedPart.attachments.isNotEmpty,
+    )
+      ..dbAttachments.addAll(quotedPart.attachments)
+      ..mergeWith(message);
+    return msg.getNotificationText();
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatGuid = widget.cvController.chat.guid;
     final hasBackground = ChatStateScope.maybeOf(context)?.hasCustomWallpaper ?? false;
     final resolvedPart = part;
     if (!iOS) {
-      String text;
-      if (resolvedPart == null) {
-        text = "Failed to parse thread parts!";
-      } else {
-        final previewMessage = Message(
-          text: resolvedPart.text,
-          subject: resolvedPart.subject,
-          hasAttachments: resolvedPart.attachments.isNotEmpty,
-        )
-          ..dbAttachments.addAll(resolvedPart.attachments)
-          ..mergeWith(message);
-        text = previewMessage.getNotificationText();
-      }
+      final previewAttachment =
+          resolvedPart == null ? null : AttachmentPreview.firstPreviewableAttachment(resolvedPart.attachments);
+      final showPreview = previewAttachment != null &&
+          AttachmentPreview.canShow(previewAttachment, generateVideoThumbnail: true);
+      final snippet = resolvedPart == null ? "Failed to parse thread parts!" : _quotedSnippet(resolvedPart);
+
       return MouseRegion(
         cursor: MouseCursor.defer,
         child: ConstrainedBox(
@@ -99,22 +109,38 @@ class _ReplyBubbleState extends State<ReplyBubble> with ThemeHelpers {
                       borderRadius: BorderRadius.circular(12),
                     )
                   : null,
-              child: Text.rich(
-                TextSpan(children: [
-                  TextSpan(
-                    text: controller.senderDisplayName,
-                    style: context.textTheme.bodyMedium!
-                        .copyWith(fontWeight: FontWeight.w400, color: context.theme.colorScheme.outline),
+              child: Row(
+                children: [
+                  if (showPreview)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: AttachmentPreview(
+                        attachment: previewAttachment,
+                        size: 52,
+                        borderRadius: BorderRadius.circular(8),
+                        generateVideoThumbnail: true,
+                      ),
+                    ),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                          text: controller.senderDisplayName,
+                          style: context.textTheme.bodyMedium!
+                              .copyWith(fontWeight: FontWeight.w400, color: context.theme.colorScheme.outline),
+                        ),
+                        const TextSpan(text: "\n"),
+                        TextSpan(
+                          text: snippet,
+                          style: context.textTheme.bodyMedium!.apply(fontSizeFactor: 1.15),
+                        ),
+                      ]),
+                      style: context.textTheme.labelLarge!.copyWith(color: context.theme.colorScheme.onSurface),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  const TextSpan(text: "\n"),
-                  TextSpan(
-                    text: text,
-                    style: context.textTheme.bodyMedium!.apply(fontSizeFactor: 1.15),
-                  ),
-                ]),
-                style: context.textTheme.labelLarge!.copyWith(color: context.theme.colorScheme.onSurface),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                ],
               ),
             ),
           ),
