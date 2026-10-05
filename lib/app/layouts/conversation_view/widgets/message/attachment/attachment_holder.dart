@@ -368,18 +368,13 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
         final bool hideAttachments = _ms.shouldHideAttachments.value;
         final bool selected = !isiOS && (controller.cvController?.selected.any((m) => m.guid == message.guid) ?? false);
 
-        // Reading these observables registers the Obx dependency so the widget
-        // rebuilds whenever transfer state, resolved file, or active download
-        // changes — including service-driven transitions (upload complete,
-        // incoming GUID swap, auto-download started from another code path).
-        // ignore: unused_local_variable
-        final _ = state.transferState.value;
-        // ignore: unused_local_variable
-        final _ = state.resolvedFile.value;
-        // ignore: unused_local_variable
-        final _ = state.activeDownload.value;
-        // ignore: unused_local_variable
-        final _ = state.hasError.value;
+        // Touch observables so Obx rebuilds on transfer / file / live-photo changes
+        // (upload complete, GUID swap, late hasLivePhoto promotion, etc.).
+        state.transferState.value;
+        state.resolvedFile.value;
+        state.activeDownload.value;
+        state.hasError.value;
+        state.hasLivePhoto.value;
 
         final hasError = state.hasError.value || message.error > 0;
         final hasPreview = state.resolvedFile.value != null ||
