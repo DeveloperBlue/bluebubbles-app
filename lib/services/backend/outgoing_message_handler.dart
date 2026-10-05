@@ -1019,10 +1019,35 @@ class OutgoingMessageHandler {
           ? (data) => _finalizeOutgoingSuccess(c, tempGuid, data)
           : (Map<String, dynamic> data) async {
               final newMessage = Message.fromMap(data['data']);
-              final responseAttachments = ((data['data']?['attachments'] as List?) ?? <dynamic>[])
+              var responseAttachments = ((data['data']?['attachments'] as List?) ?? <dynamic>[])
                   .whereType<Map>()
                   .map((e) => Attachment.fromMap(e.cast<String, Object>()))
                   .toList();
+              // Older servers omit attachments on multipart responses (getMessage
+              // without withAttachments). Synthesize from attributedBody runs so
+              // temp → real GUID remapping still runs and parts rebuild keeps media.
+              if (responseAttachments.isEmpty && attachments.isNotEmpty) {
+                final attRuns = (newMessage.attributedBody.firstOrNull?.runs ?? const [])
+                    .where((r) => r.isAttachment && (r.attributes?.attachmentGuid?.isNotEmpty ?? false))
+                    .toList();
+                for (int i = 0; i < attachments.length && i < attRuns.length; i++) {
+                  final temp = attachments[i];
+                  final realGuid = attRuns[i].attributes!.attachmentGuid!;
+                  responseAttachments.add(Attachment(
+                    guid: realGuid,
+                    uti: temp.uti,
+                    mimeType: temp.mimeType,
+                    isOutgoing: true,
+                    transferName: temp.transferName,
+                    totalBytes: temp.totalBytes,
+                    height: temp.height,
+                    width: temp.width,
+                    metadata: temp.metadata,
+                    hasLivePhoto: temp.hasLivePhoto,
+                    isDownloaded: true,
+                  ));
+                }
+              }
               // Swap attachment GUIDs first, then swap the message GUID (same
               // ordering constraint as sendAttachment).  Response attachments
               // arrive in part order — match by index, falling back to
@@ -1047,6 +1072,12 @@ class OutgoingMessageHandler {
                 }
               }
               if (Get.isRegistered<MessagesService>(tag: c.guid)) {
+                // Ensure the confirmed message carries attachment objects so
+                // MessageState parts rebuild can resolve attributedBody runs.
+                if (responseAttachments.isNotEmpty && newMessage.dbAttachments.isEmpty) {
+                  newMessage.dbAttachments.addAll(responseAttachments);
+                  newMessage.hasAttachments = true;
+                }
                 MessagesSvc(c.guid).updateMessage(newMessage);
               }
               await _matchMessageWithExisting(c, tempGuid, newMessage);
